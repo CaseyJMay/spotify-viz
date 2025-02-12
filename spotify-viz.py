@@ -1,5 +1,5 @@
 import asyncio
-from quart import Quart, websocket
+from quart import Quart, websocket, request, jsonify
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
 import numpy as np
@@ -9,7 +9,7 @@ import sounddevice as sd
 CLIENT_ID = "c616b8b7868b412ba56a1f77d28ad209"
 CLIENT_SECRET = "bb39e133cc834fa1b46c0b70fcc6fc08"
 REDIRECT_URI = "http://localhost:8888/callback"
-SCOPE = "user-read-currently-playing user-read-playback-state"
+SCOPE = "user-read-currently-playing user-read-playback-state user-modify-playback-state"  # include modify playback state
 
 # Initialize Spotify client
 spotify = Spotify(auth_manager=SpotifyOAuth(
@@ -22,15 +22,24 @@ spotify = Spotify(auth_manager=SpotifyOAuth(
 # Quart app
 app = Quart(__name__)
 
+# Enable CORS for all routes.
+@app.after_request
+async def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
 # Global variables for audio data and song metadata.
-# We now add an "id" field to uniquely identify the current song.
+# Now we include an "is_playing" property.
 current_song = {
     "id": "",
     "title": "",
     "artists": "",
     "album_cover": "",
     "artist_icon": "",  # New key for the artist icon URL
-    "progress": 0
+    "progress": 0,
+    "is_playing": False
 }
 frequency_bands = {f"bucket{i}": 0 for i in range(1, 26)}  # Initialize with 25 buckets
 
@@ -91,30 +100,31 @@ async def fetch_current_song():
                 duration_ms = current_track["item"].get("duration_ms", 1)
                 progress = progress_ms / duration_ms
 
+                # Spotify returns "is_playing" in the response.
+                is_playing = current_track.get("is_playing", False)
+
                 # Only fetch a new artist icon if the song has changed.
                 if new_id != current_song.get("id", ""):
-                    # --- Fetch artist icon using the first artist's ID ---
                     first_artist = current_track["item"]["artists"][0]
                     artist_icon = ""
                     if first_artist.get("id"):
                         try:
                             artist_details = spotify.artist(first_artist["id"])
                             if artist_details and artist_details.get("images"):
-                                # Use the first available image as the artist icon.
                                 artist_icon = artist_details["images"][0]["url"]
                         except Exception as e:
                             print(f"Error fetching artist details: {e}")
                     
-                    # Update entire song data.
                     current_song["id"] = new_id
                     current_song["title"] = track_name
                     current_song["artists"] = artists
                     current_song["album_cover"] = album_cover
                     current_song["progress"] = progress
                     current_song["artist_icon"] = artist_icon
+                    current_song["is_playing"] = is_playing
                 else:
-                    # Same song, just update progress.
                     current_song["progress"] = progress
+                    current_song["is_playing"] = is_playing
         except Exception as e:
             print(f"Error fetching song info: {e}")
         await asyncio.sleep(1)
@@ -127,11 +137,49 @@ async def song_data():
         await websocket.send_json({"song": current_song, "bands": safe_bands})
         await asyncio.sleep(0.075)  # 20Hz updates
 
-# Start background task.
+#############################################
+# Playback Control Endpoints
+#############################################
+
+@app.route("/control/pause", methods=["POST"])
+async def pause_playback():
+    try:
+        spotify.pause_playback()
+        return jsonify({"status": "ok", "action": "pause"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+@app.route("/control/play", methods=["POST"])
+async def resume_playback():
+    try:
+        spotify.start_playback()
+        return jsonify({"status": "ok", "action": "play"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+@app.route("/control/next", methods=["POST"])
+async def next_track():
+    try:
+        spotify.next_track()
+        return jsonify({"status": "ok", "action": "next"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+@app.route("/control/back", methods=["POST"])
+async def previous_track():
+    try:
+        spotify.previous_track()
+        return jsonify({"status": "ok", "action": "back"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+#############################################
+# End Playback Control Endpoints
+#############################################
+
 @app.before_serving
 async def startup():
     asyncio.create_task(fetch_current_song())
 
-# Run Quart app.
 if __name__ == "__main__":
     app.run(port=5000)

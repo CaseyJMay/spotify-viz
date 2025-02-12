@@ -6,6 +6,7 @@ interface Song {
   artists: string;
   album_cover: string;
   progress: number;
+  is_playing: boolean;
   // Optionally, add an artist_icon URL if available:
   artist_icon?: string;
 }
@@ -26,13 +27,21 @@ interface Ripple {
   startTime: number;
 }
 
+// Helper: compute median from an array.
+function median(arr: number[]): number {
+  if (arr.length === 0) return 0;
+  const sorted = arr.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
 const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previousAlbumCoverRef = useRef<string | null>(null);
   const albumImageRef = useRef<HTMLImageElement | null>(null);
-  // New ref for artist icon.
   const artistIconRef = useRef<HTMLImageElement | null>(null);
-  // To cache the currently loaded artist icon URL.
   const previousArtistIconUrlRef = useRef<string | null>(null);
 
   const [song, setSong] = useState<Song>({
@@ -40,6 +49,7 @@ const App: React.FC = () => {
     artists: "Unknown Artist",
     album_cover: "",
     progress: 0,
+    is_playing: false,
   });
   const [bands, setBands] = useState<Bands>({});
 
@@ -47,23 +57,83 @@ const App: React.FC = () => {
   const gradientColorsRef = useRef<string[]>(["#000", "#000"]);
   const transitionProgressRef = useRef(0);
 
+  // --- Configuration State (for ripples & bass thump) ---
+  // Defaults now unchecked.
+  const [config, setConfig] = useState({
+    ripples: false,
+    bassThump: false,
+  });
+
+  // --- Playback State (synced with Spotify) ---
+  const [isPlaying, setIsPlaying] = useState(false);
+
   // --- Ripple System ---
   const ripplesRef = useRef<Ripple[]>([]);
   const lastRippleTriggerRef = useRef<number>(0);
 
-  // --- Rotating Buffer for Bucket5 ---
+  // --- Rotating Buffer for Bucket5 (short-term) ---
   const bucket5BufferRef = useRef<{ timestamp: number; value: number }[]>([]);
-  // --- Rising Edge Detection for Bucket5 ---
   const bucket5WasHighRef = useRef<boolean>(false);
 
-  // --- Footer Visibility via Mouse Movement ---
+  // --- Song Bass Baseline (for dynamic threshold) ---
+  const songBassBaselineRef = useRef<number>(0);
+  const volumeBufferRef = useRef<{ timestamp: number; value: number }[]>([]);
+
+  // --- Footer/Menu Visibility via Mouse Movement ---
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [menuExpanded, setMenuExpanded] = useState(false);
   const lastMouseMoveRef = useRef<number>(performance.now());
 
-  const { lastJsonMessage } = useWebSocket("ws://localhost:5000/ws", {
+  const { lastJsonMessage } = useWebSocket("http://localhost:5000/ws", {
     shouldReconnect: () => true,
   });
 
-  // Helper function to draw a rounded rectangle.
+  // Global mousemove listener for the menu and controls.
+  useEffect(() => {
+    let timeoutId: number;
+    const handleGlobalMouseMove = () => {
+      setMenuVisible(true);
+      clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(() => setMenuVisible(false), 5000);
+    };
+    document.addEventListener("mousemove", handleGlobalMouseMove);
+    return () => {
+      document.removeEventListener("mousemove", handleGlobalMouseMove);
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  // --- Playback Control Handlers ---
+  const handlePlayPause = async () => {
+    try {
+      if (isPlaying) {
+        await fetch("http://localhost:5000/control/pause", { method: "POST" });
+      } else {
+        await fetch("http://localhost:5000/control/play", { method: "POST" });
+      }
+      // isPlaying is updated from Spotify.
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleNext = async () => {
+    try {
+      await fetch("http://localhost:5000/control/next", { method: "POST" });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleBack = async () => {
+    try {
+      await fetch("http://localhost:5000/control/back", { method: "POST" });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // --- Helper function to draw a rounded rectangle.
   const drawRoundedRect = (
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -94,13 +164,16 @@ const App: React.FC = () => {
         setSong((prev) => {
           if (prev.album_cover !== data.song.album_cover) {
             previousAlbumCoverRef.current = null;
+            songBassBaselineRef.current = 0;
           }
+          setIsPlaying(data.song.is_playing);
           return {
             title: data.song.title || "No Title",
             artists: data.song.artists || "Unknown Artist",
             album_cover: data.song.album_cover || "",
             progress: data.song.progress,
-            artist_icon: data.song.artist_icon, // Optional: if provided from backend
+            is_playing: data.song.is_playing,
+            artist_icon: data.song.artist_icon,
           };
         });
       }
@@ -137,12 +210,9 @@ const App: React.FC = () => {
   }, [song.album_cover]);
 
   // --- Artist Icon Effect ---
-  // If a separate artist_icon URL is provided, load that.
-  // Otherwise, fallback to using the album_cover.
   useEffect(() => {
     const iconUrl = song.artist_icon || song.album_cover;
     if (!iconUrl) return;
-    // Only reload if the URL has changed.
     if (previousArtistIconUrlRef.current === iconUrl) return;
     previousArtistIconUrlRef.current = iconUrl;
     const img = new Image();
@@ -153,31 +223,35 @@ const App: React.FC = () => {
     };
   }, [song.artist_icon, song.album_cover]);
 
-  // --- Ripple Detection Effect (Using Rotating Buffer & Rising Edge) ---
+  // --- Ripple Detection Effect (Dynamic Bass Threshold) ---
   useEffect(() => {
-    const bufferDuration = 1000; // 1 second window
-    const triggerFactor = 1.5;   // new value must be at least 50% higher than the average
-    const debounceMs = 0;        // minimum time between triggers
-    const minThreshold = 20;     // ignore very low values
+    if (!config.ripples) return;
+    const bufferDuration = 1000; // 1 second window (short-term)
+    const triggerFactor = 2; // current value must be at least 2× short-term average
+    const debounceMs = 0; // minimum time between triggers
 
     const now = performance.now();
     const currentBucket5 = bands["bucket5"] || 0;
 
-    // Add the current bucket5 value to the buffer.
     bucket5BufferRef.current.push({ timestamp: now, value: currentBucket5 });
-    // Remove entries older than bufferDuration.
     bucket5BufferRef.current = bucket5BufferRef.current.filter(
       (entry) => now - entry.timestamp <= bufferDuration
     );
 
-    // Compute the average value in the buffer.
+    volumeBufferRef.current.push({ timestamp: now, value: currentBucket5 });
+    volumeBufferRef.current = volumeBufferRef.current.filter(
+      (entry) => now - entry.timestamp <= 10000
+    );
+
     const sum = bucket5BufferRef.current.reduce((acc, entry) => acc + entry.value, 0);
-    const avg = bucket5BufferRef.current.length > 0 ? sum / bucket5BufferRef.current.length : 0;
+    const avgShort = bucket5BufferRef.current.length > 0 ? sum / bucket5BufferRef.current.length : 0;
 
-    // Check if the current value is significantly above the average.
-    const isHigh = avg > 0 && currentBucket5 >= triggerFactor * avg && currentBucket5 > minThreshold;
+    const volumeValues = volumeBufferRef.current.map((entry) => entry.value);
+    const macroVolume = median(volumeValues);
+    const dynamicThreshold = macroVolume * 1.5;
 
-    // Only trigger on the rising edge.
+    const isHigh = avgShort > 0 && currentBucket5 >= triggerFactor * avgShort && currentBucket5 > dynamicThreshold;
+
     if (isHigh && !bucket5WasHighRef.current && now - lastRippleTriggerRef.current >= debounceMs) {
       ripplesRef.current.push({ startTime: now });
       lastRippleTriggerRef.current = now;
@@ -185,7 +259,7 @@ const App: React.FC = () => {
     } else if (!isHigh) {
       bucket5WasHighRef.current = false;
     }
-  }, [bands]);
+  }, [bands, config.ripples]);
 
   // --- Utility Functions ---
   const extractPrimaryColors = (imageData: ImageData): string[] => {
@@ -195,16 +269,9 @@ const App: React.FC = () => {
       const r = Math.round(data[i] / 32) * 32;
       const g = Math.round(data[i + 1] / 32) * 32;
       const b = Math.round(data[i + 2] / 32) * 32;
-      // Skip near-white colors.
-      if (r > 200 && g > 200 && b > 200 && Math.abs(r - g) < 10 && Math.abs(g - b) < 10) {
-        continue;
-      }
-      // Calculate perceived brightness.
+      if (r > 200 && g > 200 && b > 200 && Math.abs(r - g) < 10 && Math.abs(g - b) < 10) continue;
       const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
-      // Skip very light colors.
-      if (brightness > 220) {
-        continue;
-      }
+      if (brightness > 220) continue;
       const key = `${r},${g},${b}`;
       colorBuckets[key] = (colorBuckets[key] || 0) + 1;
     }
@@ -214,14 +281,13 @@ const App: React.FC = () => {
       .map(([key]) => `rgb(${key})`);
   };
 
-  // --- Canvas Drawing Effect with Page Focus Handling ---
+  // --- Canvas Drawing Effect with Bass "Thump" on Album Cover ---
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Resize the canvas on window resize.
     const resizeCanvas = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -229,13 +295,11 @@ const App: React.FC = () => {
     window.addEventListener("resize", resizeCanvas);
     resizeCanvas();
 
-    // Update the lastMouseMove timestamp when the mouse moves over the canvas.
     const handleMouseMove = () => {
       lastMouseMoveRef.current = performance.now();
     };
     canvas.addEventListener("mousemove", handleMouseMove);
 
-    // Helper to draw text with ellipsis if it overflows.
     const drawEllipsedText = (
       ctx: CanvasRenderingContext2D,
       text: string,
@@ -254,7 +318,6 @@ const App: React.FC = () => {
       }
     };
 
-    // The drawing function.
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -264,7 +327,7 @@ const App: React.FC = () => {
       const barWidth = 8;
       const maxBarLength = 100;
 
-      // --- Draw the main background gradient ---
+      // --- Draw main background gradient ---
       const bgGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
       if (gradientColorsRef.current.length < 2) {
         bgGradient.addColorStop(0, "#000");
@@ -279,7 +342,7 @@ const App: React.FC = () => {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.globalAlpha = 1;
 
-      // --- Draw the bars (using raw band data) ---
+      // --- Draw bars ---
       const angles = Array.from({ length: TOTAL_BARS }, (_, i) => (i / TOTAL_BARS) * Math.PI * 2);
       angles.forEach((angle) => {
         const adjustedAngle = Math.PI / 4 + angle;
@@ -301,7 +364,6 @@ const App: React.FC = () => {
         ctx.stroke();
         ctx.closePath();
 
-        // Draw the mirrored bar.
         const mirrorAngle = adjustedAngle + Math.PI;
         const xStartMirror = centerX + Math.cos(mirrorAngle) * albumRadius;
         const yStartMirror = centerY + Math.sin(mirrorAngle) * albumRadius;
@@ -314,16 +376,30 @@ const App: React.FC = () => {
         ctx.closePath();
       });
 
-      // --- Draw the album cover in the center ---
+      // --- Draw album cover with bass "thump" effect ---
       if (albumImageRef.current) {
+        let scale = 1;
+        if (config.bassThump) {
+          const nowTime = performance.now();
+          const effectDuration = 300;
+          const bassDelta = nowTime - lastRippleTriggerRef.current;
+          if (bassDelta < effectDuration) {
+            const half = effectDuration / 2;
+            scale = bassDelta < half
+              ? 1 - 0.1 * (bassDelta / half)
+              : 0.9 + 0.1 * ((bassDelta - half) / half);
+          }
+        }
         ctx.save();
         ctx.beginPath();
         ctx.arc(centerX, centerY, albumRadius, 0, Math.PI * 2);
         ctx.clip();
+        ctx.translate(centerX, centerY);
+        ctx.scale(scale, scale);
         ctx.drawImage(
           albumImageRef.current,
-          centerX - albumRadius,
-          centerY - albumRadius,
+          -albumRadius,
+          -albumRadius,
           albumRadius * 2,
           albumRadius * 2
         );
@@ -331,11 +407,11 @@ const App: React.FC = () => {
       }
 
       // --- Draw Active Ripples ---
-      const now = performance.now();
+      const nowTime = performance.now();
       const maxRippleRadius = Math.sqrt(centerX * centerX + centerY * centerY);
-      const rippleLifetime = 1000; // Each ripple lasts ~1 second.
+      const rippleLifetime = 1000;
       ripplesRef.current = ripplesRef.current.filter((ripple) => {
-        const elapsed = now - ripple.startTime;
+        const elapsed = nowTime - ripple.startTime;
         if (elapsed > rippleLifetime) return false;
         const t = elapsed / rippleLifetime;
         const currentRadius = albumRadius + t * (maxRippleRadius - albumRadius);
@@ -348,36 +424,26 @@ const App: React.FC = () => {
         return true;
       });
 
-      // --- Draw the Integrated Footer (if applicable) ---
-      const timeSinceMouse = now - lastMouseMoveRef.current;
-      let footerOpacity = 0;
-      if (timeSinceMouse < 3000) {
-        footerOpacity = 1;
-      } else if (timeSinceMouse < 4000) {
-        footerOpacity = 0.4 - (timeSinceMouse - 3000) / 1000;
-      }
+      // --- Draw Integrated Footer ---
+      // Now we use menuVisible for the footer opacity so that all controls are in sync.
+      const footerOpacity = menuVisible ? 1 : 0;
       if (footerOpacity > 0) {
         const footerHeight = 200;
         const footerY = canvas.height - footerHeight;
-        // Draw footer background gradient.
         const footerGradient = ctx.createLinearGradient(0, footerY, 0, canvas.height);
         footerGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
         footerGradient.addColorStop(1, `rgba(0, 0, 0, ${0.8 * footerOpacity})`);
         ctx.fillStyle = footerGradient;
         ctx.fillRect(0, footerY, canvas.width, footerHeight);
 
-        // Save state and set footer global alpha.
         ctx.save();
         ctx.globalAlpha = footerOpacity;
-
-        // --- Draw Artist Icon as a Round Image ---
         const iconSize = 60;
         const iconMarginRight = 20;
         const iconX = 30;
         if (artistIconRef.current) {
           const iconY = footerY + (footerHeight - iconSize) / 2;
           ctx.save();
-          // Create a circular clipping region.
           ctx.beginPath();
           ctx.arc(iconX + iconSize / 2, iconY + iconSize / 2, iconSize / 2, 0, Math.PI * 2);
           ctx.closePath();
@@ -385,22 +451,16 @@ const App: React.FC = () => {
           ctx.drawImage(artistIconRef.current, iconX, iconY, iconSize, iconSize);
           ctx.restore();
         }
-        // Determine text start position.
         const textX = 30 + (artistIconRef.current ? iconSize + iconMarginRight : 0);
-        // Increase the text block's width by moving the progress bar further right.
-        const progressBarX = 700;
+        const progressBarX = 400;
         const maxTextWidth = progressBarX - textX - 10;
 
-        // --- Draw Song Title and Artist Name ---
         ctx.fillStyle = "#fff";
         ctx.textAlign = "left";
-        ctx.font = "bold 28px Arial";
-        // Adjust text vertical positions to give more room.
+        ctx.font = "bold 22px Arial";
         drawEllipsedText(ctx, song.title, textX, footerY + 90, maxTextWidth);
-        ctx.font = "24px Arial";
+        ctx.font = "18px Arial";
         drawEllipsedText(ctx, song.artists, textX, footerY + 130, maxTextWidth);
-
-        // --- Draw the Progress Bar (smaller height) ---
         const progressBarHeight = 6;
         const progressBarY = footerY + (footerHeight - progressBarHeight) / 2;
         const progressBarRadius = progressBarHeight / 2;
@@ -414,10 +474,8 @@ const App: React.FC = () => {
       }
     };
 
-    // Use a ref to hold the current animation frame ID.
     const animationFrameId = { current: 0 } as { current: number };
 
-    // The animation loop.
     const animFrame = () => {
       draw();
       if (transitionProgressRef.current < 1) {
@@ -426,15 +484,12 @@ const App: React.FC = () => {
       animationFrameId.current = requestAnimationFrame(animFrame);
     };
 
-    // Start the animation.
     animationFrameId.current = requestAnimationFrame(animFrame);
 
-    // Handle page visibility changes.
     const handleVisibilityChange = () => {
       if (document.hidden) {
         cancelAnimationFrame(animationFrameId.current);
       } else {
-        // Optionally reset time-dependent variables.
         transitionProgressRef.current = 0;
         animationFrameId.current = requestAnimationFrame(animFrame);
       }
@@ -447,9 +502,131 @@ const App: React.FC = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelAnimationFrame(animationFrameId.current);
     };
-  }, [bands, gradientColors, song]);
+  }, [bands, gradientColors, song, config.bassThump, menuVisible]);
 
-  return <canvas ref={canvasRef} style={{ display: "block" }} />;
+  return (
+    <>
+      {/* Top-right config menu */}
+      <div
+        style={{
+          position: "fixed",
+          top: 10,
+          right: 10,
+          zIndex: 1000,
+          opacity: menuVisible ? 1 : 0,
+          transition: "opacity 0.5s",
+          color: "#fff",
+          textAlign: "right",
+        }}
+      >
+        <button
+          onClick={() => setMenuExpanded((prev) => !prev)}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#fff",
+            fontSize: "24px",
+            cursor: "pointer",
+          }}
+        >
+          ...
+        </button>
+        {menuExpanded && (
+          <div
+            style={{
+              background: "rgba(0, 0, 0, 0.7)",
+              padding: "10px",
+              borderRadius: "5px",
+              marginTop: "5px",
+              textAlign: "left",
+            }}
+          >
+            <div>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={config.ripples}
+                  onChange={(e) =>
+                    setConfig((prev) => ({ ...prev, ripples: e.target.checked }))
+                  }
+                />
+                Enable Ripples
+              </label>
+            </div>
+            <div>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={config.bassThump}
+                  onChange={(e) =>
+                    setConfig((prev) => ({ ...prev, bassThump: e.target.checked }))
+                  }
+                />
+                Enable Bass Thump
+              </label>
+            </div>
+          </div>
+        )}
+      </div>
+      {/* Bottom overlay control buttons */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 20,
+          left: 0,
+          right: 0,
+          zIndex: 1000,
+          textAlign: "center",
+          opacity: menuVisible ? 1 : 0,
+          transition: "opacity 0.5s",
+        }}
+      >
+        <button
+          onClick={handleBack}
+          style={{
+            margin: "0 10px",
+            padding: "10px",
+            fontSize: "24px",
+            cursor: "pointer",
+            background: "transparent",
+            border: "none",
+            color: "#fff",
+          }}
+        >
+          ⏮
+        </button>
+        <button
+          onClick={handlePlayPause}
+          style={{
+            margin: "0 10px",
+            padding: "10px",
+            fontSize: "24px",
+            cursor: "pointer",
+            background: "transparent",
+            border: "none",
+            color: "#fff",
+          }}
+        >
+          {isPlaying ? "⏸" : "▶"}
+        </button>
+        <button
+          onClick={handleNext}
+          style={{
+            margin: "0 10px",
+            padding: "10px",
+            fontSize: "24px",
+            cursor: "pointer",
+            background: "transparent",
+            border: "none",
+            color: "#fff",
+          }}
+        >
+          ⏭
+        </button>
+      </div>
+      <canvas ref={canvasRef} style={{ display: "block" }} />
+    </>
+  );
 };
 
 export default App;
