@@ -58,9 +58,8 @@ const App: React.FC = () => {
   const transitionProgressRef = useRef(0);
 
   // --- Configuration State (for ripples & bass thump) ---
-  // Defaults now unchecked.
   const [config, setConfig] = useState({
-    ripples: false,
+    ripples: true,
     bassThump: false,
   });
 
@@ -111,7 +110,7 @@ const App: React.FC = () => {
       } else {
         await fetch("http://localhost:5000/control/play", { method: "POST" });
       }
-      // isPlaying is updated from Spotify.
+      // We do not toggle isPlaying locally because it's updated from Spotify.
     } catch (e) {
       console.error(e);
     }
@@ -223,43 +222,65 @@ const App: React.FC = () => {
     };
   }, [song.artist_icon, song.album_cover]);
 
-  // --- Ripple Detection Effect (Dynamic Bass Threshold) ---
-  useEffect(() => {
+// --- Ripple Detection Effect (using max for currentAmplitude and average for threshold) ---
+useEffect(() => {
     if (!config.ripples) return;
-    const bufferDuration = 1000; // 1 second window (short-term)
-    const triggerFactor = 2; // current value must be at least 2× short-term average
+    const bufferDuration = 1000; // short-term window (1 second)
+    const longTermDuration = 1000; // long-term window (5 seconds)
     const debounceMs = 0; // minimum time between triggers
-
+    const MIN_THRESHOLD = 25; // hard lower bound for the threshold
+  
+    // Use buckets 1-5.
+    const bucketIndices = [1, 2, 3, 4, 5];
+    const currentBuckets = bucketIndices.map(i => bands[`bucket${i}`] || 0);
+    // Use the maximum amplitude from these buckets.
+    const currentAmplitude = Math.max(...currentBuckets);
+  
+    // Log the amplitudes for buckets 1-5.
+    console.log(
+      "Buckets 1-5:",
+      bucketIndices.map(i => `bucket${i}: ${bands[`bucket${i}`]?.toFixed(2)}`).join(", ")
+    );
+  
     const now = performance.now();
-    const currentBucket5 = bands["bucket5"] || 0;
-
-    bucket5BufferRef.current.push({ timestamp: now, value: currentBucket5 });
+  
+    // Update the short-term buffer with the current maximum amplitude.
+    bucket5BufferRef.current.push({ timestamp: now, value: currentAmplitude });
     bucket5BufferRef.current = bucket5BufferRef.current.filter(
       (entry) => now - entry.timestamp <= bufferDuration
     );
-
-    volumeBufferRef.current.push({ timestamp: now, value: currentBucket5 });
+  
+    // Update the long-term volume buffer (5 seconds).
+    volumeBufferRef.current.push({ timestamp: now, value: currentAmplitude });
     volumeBufferRef.current = volumeBufferRef.current.filter(
-      (entry) => now - entry.timestamp <= 10000
+      (entry) => now - entry.timestamp <= longTermDuration
     );
-
-    const sum = bucket5BufferRef.current.reduce((acc, entry) => acc + entry.value, 0);
-    const avgShort = bucket5BufferRef.current.length > 0 ? sum / bucket5BufferRef.current.length : 0;
-
-    const volumeValues = volumeBufferRef.current.map((entry) => entry.value);
-    const macroVolume = median(volumeValues);
-    const dynamicThreshold = macroVolume * 1.5;
-
-    const isHigh = avgShort > 0 && currentBucket5 >= triggerFactor * avgShort && currentBucket5 > dynamicThreshold;
-
+  
+    // Compute the average from the long-term buffer.
+    const volumeValues = volumeBufferRef.current.map(entry => entry.value);
+    const averageVolume = volumeValues.reduce((acc, v) => acc + v, 0) / (volumeValues.length || 1);
+    const dynamicThreshold = Math.max(MIN_THRESHOLD, averageVolume * 1.5);
+  
+    const isHigh = currentAmplitude > dynamicThreshold;
+  
+    console.log(`Current Amplitude: ${currentAmplitude.toFixed(2)}; Dynamic Threshold: ${dynamicThreshold.toFixed(2)}`);
+  
     if (isHigh && !bucket5WasHighRef.current && now - lastRippleTriggerRef.current >= debounceMs) {
       ripplesRef.current.push({ startTime: now });
       lastRippleTriggerRef.current = now;
       bucket5WasHighRef.current = true;
+      console.log(
+        `Bass Hit: Buckets 1-5: ${bucketIndices.map(i => bands[`bucket${i}`]?.toFixed(2)).join(", ")}, ` +
+        `Dynamic Threshold: ${dynamicThreshold.toFixed(2)}, ` +
+        `Current Amplitude: ${currentAmplitude.toFixed(2)}`
+      );
     } else if (!isHigh) {
       bucket5WasHighRef.current = false;
     }
   }, [bands, config.ripples]);
+  
+  
+  
 
   // --- Utility Functions ---
   const extractPrimaryColors = (imageData: ImageData): string[] => {
@@ -381,12 +402,12 @@ const App: React.FC = () => {
         let scale = 1;
         if (config.bassThump) {
           const nowTime = performance.now();
-          const effectDuration = 300;
+          const effectDuration = 100;
           const bassDelta = nowTime - lastRippleTriggerRef.current;
           if (bassDelta < effectDuration) {
             const half = effectDuration / 2;
             scale = bassDelta < half
-              ? 1 - 0.1 * (bassDelta / half)
+              ? 1 - 0.05 * (bassDelta / half)
               : 0.9 + 0.1 * ((bassDelta - half) / half);
           }
         }
@@ -425,8 +446,13 @@ const App: React.FC = () => {
       });
 
       // --- Draw Integrated Footer ---
-      // Now we use menuVisible for the footer opacity so that all controls are in sync.
-      const footerOpacity = menuVisible ? 1 : 0;
+      const timeSinceMouse = nowTime - lastMouseMoveRef.current;
+      let footerOpacity = 0;
+      if (timeSinceMouse < 3000) {
+        footerOpacity = 1;
+      } else if (timeSinceMouse < 4000) {
+        footerOpacity = 0.4 - (timeSinceMouse - 3000) / 1000;
+      }
       if (footerOpacity > 0) {
         const footerHeight = 200;
         const footerY = canvas.height - footerHeight;
@@ -502,7 +528,7 @@ const App: React.FC = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelAnimationFrame(animationFrameId.current);
     };
-  }, [bands, gradientColors, song, config.bassThump, menuVisible]);
+  }, [bands, gradientColors, song, config.bassThump]);
 
   return (
     <>
