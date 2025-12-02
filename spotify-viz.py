@@ -1,17 +1,25 @@
+#!/usr/bin/env python3
+"""
+Spotify Visualizer Backend
+Simple version - uses microphone input
+"""
+
 import asyncio
+import signal
+import sys
+import os
 from quart import Quart, websocket, request, jsonify
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
 import numpy as np
 import sounddevice as sd
 
-# Spotify Developer credentials
+# Configuration
 CLIENT_ID = "c616b8b7868b412ba56a1f77d28ad209"
 CLIENT_SECRET = "bb39e133cc834fa1b46c0b70fcc6fc08"
-REDIRECT_URI = "http://localhost:8888/callback"
-SCOPE = "user-read-currently-playing user-read-playback-state user-modify-playback-state"  # include modify playback state
+REDIRECT_URI = "http://127.0.0.1:5000/callback"
+SCOPE = "user-read-currently-playing user-read-playback-state user-modify-playback-state"
 
-# Initialize Spotify client
 spotify = Spotify(auth_manager=SpotifyOAuth(
     client_id=CLIENT_ID,
     client_secret=CLIENT_SECRET,
@@ -19,10 +27,8 @@ spotify = Spotify(auth_manager=SpotifyOAuth(
     scope=SCOPE
 ))
 
-# Quart app
 app = Quart(__name__)
 
-# Enable CORS for all routes.
 @app.after_request
 async def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -30,156 +36,204 @@ async def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
-# Global variables for audio data and song metadata.
-# Now we include an "is_playing" property.
+# Global State
 current_song = {
-    "id": "",
-    "title": "",
-    "artists": "",
-    "album_cover": "",
-    "artist_icon": "",  # New key for the artist icon URL
-    "progress": 0,
-    "is_playing": False
+    "id": "", "title": "", "artists": "", "album_cover": "",
+    "artist_icon": "", "progress": 0, "is_playing": False
 }
-frequency_bands = {f"bucket{i}": 0 for i in range(1, 26)}  # Initialize with 25 buckets
+frequency_bands = {f"bucket{i}": 0 for i in range(1, 26)}
+shutdown_event = asyncio.Event()
+stream = None
+fetch_task = None
 
-# Define frequency ranges for 25 buckets.
-bucket_ranges = [
-    (20, 40), (40, 60), (60, 90), (90, 120), (120, 160),    # Sub-bass and bass
-    (160, 200), (200, 250), (250, 315), (315, 400), (400, 500), # Low midrange
-    (500, 630), (630, 800), (800, 1000), (1000, 1250), (1250, 1600), # Midrange
-    (1600, 2000), (2000, 2500), (2500, 3150), (3150, 4000), (4000, 5000), # Upper midrange
-    (5000, 6300), (6300, 8000), (8000, 10000), (10000, 12500), (12500, 20000) # Presence and brilliance
+BUCKET_RANGES = [
+    (20, 40), (40, 60), (60, 90), (90, 120), (120, 160),
+    (160, 200), (200, 250), (250, 315), (315, 400), (400, 500),
+    (500, 630), (630, 800), (800, 1000), (1000, 1250), (1250, 1600),
+    (1600, 2000), (2000, 2500), (2500, 3150), (3150, 4000), (4000, 5000),
+    (5000, 6300), (6300, 8000), (8000, 10000), (10000, 12500), (12500, 20000)
 ]
 
-# Apply multipliers to balance visualization.
-bucket_multipliers = [
-    1.0, 1.0, 1.2, 1.2, 1.5,  # Sub-bass and bass
-    1.5, 1.5, 1.8, 1.8, 2.0,  # Low midrange
-    2.0, 2.2, 2.2, 2.5, 2.5,  # Midrange
-    2.8, 3.0, 3.0, 3.5, 4.0,  # Upper midrange
-    4.5, 5.0, 5.5, 6.0, 6.5   # Presence and brilliance
+BUCKET_MULTIPLIERS = [
+    1.0, 1.0, 1.2, 1.2, 1.5, 1.5, 1.5, 1.8, 1.8, 2.0,
+    2.0, 2.2, 2.2, 2.5, 2.5, 2.8, 3.0, 3.0, 3.5, 4.0,
+    4.5, 5.0, 5.5, 6.0, 6.5
 ]
 
-# Audio callback for FFT with multipliers.
+# Audio Processing
 def audio_callback(indata, frames, time, status):
+    """Process audio and calculate frequency bands."""
     global frequency_bands
     audio_data = np.frombuffer(indata, dtype=np.float32)
     fft_data = np.fft.rfft(audio_data)
     fft_magnitude = np.abs(fft_data)
     sample_rate = 44100
     freq_bins = np.fft.rfftfreq(len(audio_data), d=1/sample_rate)
-    for i, (low, high) in enumerate(bucket_ranges, start=1):
-        bucket_key = f"bucket{i}"
+    
+    for i, (low, high) in enumerate(BUCKET_RANGES, start=1):
         mask = (freq_bins >= low) & (freq_bins < high)
         if np.any(mask):
             raw_value = fft_magnitude[mask].mean()
-            frequency_bands[bucket_key] = raw_value * bucket_multipliers[i - 1]
+            frequency_bands[f"bucket{i}"] = raw_value * BUCKET_MULTIPLIERS[i - 1]
         else:
-            frequency_bands[bucket_key] = 0
+            frequency_bands[f"bucket{i}"] = 0
 
-BLACKHOLE_INDEX = 0  # BlackHole 2ch is device index 0
+def init_audio():
+    """Initialize audio input stream - uses default microphone."""
+    global stream
+    try:
+        stream = sd.InputStream(
+            callback=audio_callback,
+            channels=2,
+            samplerate=48000,
+            blocksize=1024
+        )
+        stream.start()
+        print("✓ Audio stream started (using default microphone)")
+        return True
+    except Exception as e:
+        print(f"⚠ Audio failed: {e}")
+        stream = None
+        return False
 
-# Ensure sounddevice listens to BlackHole.
-stream = sd.InputStream(device=BLACKHOLE_INDEX, callback=audio_callback, channels=2, samplerate=48000)
-stream.start()
-
-# Fetch currently playing song and update progress.
+# Spotify API
 async def fetch_current_song():
+    """Fetch currently playing song from Spotify."""
     global current_song
-    while True:
+    while not shutdown_event.is_set():
         try:
-            current_track = spotify.current_user_playing_track()
-            if current_track and current_track["item"]:
-                new_id = current_track["item"]["id"]
-                track_name = current_track["item"]["name"]
-                artists = ", ".join([artist["name"] for artist in current_track["item"]["artists"]])
-                album_cover = current_track["item"]["album"]["images"][1]["url"]
-
-                progress_ms = current_track.get("progress_ms", 0)
-                duration_ms = current_track["item"].get("duration_ms", 1)
-                progress = progress_ms / duration_ms
-
-                # Spotify returns "is_playing" in the response.
-                is_playing = current_track.get("is_playing", False)
-
-                # Only fetch a new artist icon if the song has changed.
+            track = spotify.current_user_playing_track()
+            if track and track.get("item"):
+                item = track["item"]
+                new_id = item["id"]
+                
                 if new_id != current_song.get("id", ""):
-                    first_artist = current_track["item"]["artists"][0]
                     artist_icon = ""
-                    if first_artist.get("id"):
+                    if item["artists"]:
                         try:
-                            artist_details = spotify.artist(first_artist["id"])
-                            if artist_details and artist_details.get("images"):
-                                artist_icon = artist_details["images"][0]["url"]
-                        except Exception as e:
-                            print(f"Error fetching artist details: {e}")
+                            artist = spotify.artist(item["artists"][0]["id"])
+                            if artist.get("images"):
+                                artist_icon = artist["images"][0]["url"]
+                        except:
+                            pass
                     
-                    current_song["id"] = new_id
-                    current_song["title"] = track_name
-                    current_song["artists"] = artists
-                    current_song["album_cover"] = album_cover
-                    current_song["progress"] = progress
-                    current_song["artist_icon"] = artist_icon
-                    current_song["is_playing"] = is_playing
-                else:
-                    current_song["progress"] = progress
-                    current_song["is_playing"] = is_playing
+                    current_song.update({
+                        "id": new_id,
+                        "title": item["name"],
+                        "artists": ", ".join([a["name"] for a in item["artists"]]),
+                        "album_cover": item["album"]["images"][1]["url"] if len(item["album"]["images"]) > 1 else "",
+                        "artist_icon": artist_icon,
+                    })
+                
+                progress_ms = track.get("progress_ms", 0)
+                duration_ms = item.get("duration_ms", 1)
+                current_song["progress"] = progress_ms / duration_ms
+                current_song["is_playing"] = track.get("is_playing", False)
+                
+        except asyncio.CancelledError:
+            break
         except Exception as e:
-            print(f"Error fetching song info: {e}")
+            if "NameResolutionError" not in str(e) and "Connection" not in str(e):
+                pass
+        
         await asyncio.sleep(1)
 
-# WebSocket endpoint.
+# API Endpoints
 @app.websocket("/ws")
-async def song_data():
-    while True:
-        safe_bands = {key: float(value) for key, value in frequency_bands.items()}
-        await websocket.send_json({"song": current_song, "bands": safe_bands})
-        await asyncio.sleep(0.075)  # 20Hz updates
+async def websocket_endpoint():
+    """WebSocket for real-time data."""
+    while not shutdown_event.is_set():
+        try:
+            safe_bands = {k: float(v) for k, v in frequency_bands.items()}
+            await websocket.send_json({"song": current_song, "bands": safe_bands})
+            await asyncio.sleep(0.075)
+        except (asyncio.CancelledError, Exception):
+            break
 
-#############################################
-# Playback Control Endpoints
-#############################################
+@app.route("/callback")
+async def oauth_callback():
+    """Spotify OAuth callback."""
+    error = request.args.get('error')
+    if error:
+        return f"<html><body><h1>Error: {error}</h1></body></html>", 400
+    return """
+    <html><body>
+        <h1>✓ Authorized!</h1>
+        <p>You can close this window.</p>
+        <script>setTimeout(() => window.close(), 2000);</script>
+    </body></html>
+    """, 200
 
-@app.route("/control/pause", methods=["POST"])
-async def pause_playback():
+@app.route("/control/<action>", methods=["POST"])
+async def control_playback(action):
+    """Control Spotify playback."""
     try:
-        spotify.pause_playback()
-        return jsonify({"status": "ok", "action": "pause"}), 200
+        actions = {
+            "play": spotify.start_playback,
+            "pause": spotify.pause_playback,
+            "next": spotify.next_track,
+            "back": spotify.previous_track
+        }
+        if action not in actions:
+            return jsonify({"error": "Invalid action"}), 400
+        actions[action]()
+        return jsonify({"status": "ok", "action": action}), 200
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
-@app.route("/control/play", methods=["POST"])
-async def resume_playback():
-    try:
-        spotify.start_playback()
-        return jsonify({"status": "ok", "action": "play"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
-
-@app.route("/control/next", methods=["POST"])
-async def next_track():
-    try:
-        spotify.next_track()
-        return jsonify({"status": "ok", "action": "next"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
-
-@app.route("/control/back", methods=["POST"])
-async def previous_track():
-    try:
-        spotify.previous_track()
-        return jsonify({"status": "ok", "action": "back"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
-
-#############################################
-# End Playback Control Endpoints
-#############################################
-
+# Lifecycle
 @app.before_serving
 async def startup():
-    asyncio.create_task(fetch_current_song())
+    global fetch_task
+    fetch_task = asyncio.create_task(fetch_current_song())
 
+@app.after_serving
+async def shutdown():
+    global stream, fetch_task
+    shutdown_event.set()
+    
+    if fetch_task and not fetch_task.done():
+        fetch_task.cancel()
+        try:
+            await fetch_task
+        except asyncio.CancelledError:
+            pass
+    
+    if stream:
+        try:
+            stream.stop()
+            stream.close()
+        except:
+            pass
+
+def cleanup():
+    global stream
+    if stream:
+        try:
+            stream.stop()
+            stream.close()
+        except:
+            pass
+
+def signal_handler(signum, frame):
+    print("\n\n>>> Ctrl+C received! <<<", flush=True)
+    cleanup()
+    os._exit(0)
+
+# Main
 if __name__ == "__main__":
-    app.run(port=5000)
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.siginterrupt(signal.SIGINT, True)
+    
+    print("Starting Spotify Visualizer...")
+    print("Press Ctrl+C to stop\n")
+    
+    init_audio()
+    
+    try:
+        app.run(port=5000, use_reloader=False)
+    except KeyboardInterrupt:
+        cleanup()
+    finally:
+        cleanup()

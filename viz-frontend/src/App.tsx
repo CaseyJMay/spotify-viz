@@ -83,7 +83,7 @@ const App: React.FC = () => {
   const [menuExpanded, setMenuExpanded] = useState(false);
   const lastMouseMoveRef = useRef<number>(performance.now());
 
-  const { lastJsonMessage } = useWebSocket("http://localhost:5000/ws", {
+  const { lastJsonMessage } = useWebSocket("ws://localhost:5000/ws", {
     shouldReconnect: () => true,
   });
 

@@ -1,0 +1,5 @@
+quart
+spotipy
+numpy
+sounddevice
+
