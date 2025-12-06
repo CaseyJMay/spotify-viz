@@ -61,14 +61,23 @@ BUCKET_MULTIPLIERS = [
 ]
 
 # Audio Processing
+# Cache freq_bins calculation (only depends on block size)
+_freq_bins_cache = None
+_sample_rate = 44100
+
 def audio_callback(indata, frames, time, status):
     """Process audio and calculate frequency bands."""
-    global frequency_bands
+    global frequency_bands, _freq_bins_cache
+    
     audio_data = np.frombuffer(indata, dtype=np.float32)
     fft_data = np.fft.rfft(audio_data)
     fft_magnitude = np.abs(fft_data)
-    sample_rate = 44100
-    freq_bins = np.fft.rfftfreq(len(audio_data), d=1/sample_rate)
+    
+    # Cache freq_bins calculation (only recalc if block size changes)
+    if _freq_bins_cache is None or len(_freq_bins_cache) != len(audio_data):
+        _freq_bins_cache = np.fft.rfftfreq(len(audio_data), d=1/_sample_rate)
+    
+    freq_bins = _freq_bins_cache
     
     for i, (low, high) in enumerate(BUCKET_RANGES, start=1):
         mask = (freq_bins >= low) & (freq_bins < high)
@@ -89,10 +98,8 @@ def init_audio():
             blocksize=1024
         )
         stream.start()
-        print("✓ Audio stream started (using default microphone)")
         return True
     except Exception as e:
-        print(f"⚠ Audio failed: {e}")
         stream = None
         return False
 
@@ -144,9 +151,10 @@ async def websocket_endpoint():
     """WebSocket for real-time data."""
     while not shutdown_event.is_set():
         try:
+            # Only convert to float once per update
             safe_bands = {k: float(v) for k, v in frequency_bands.items()}
             await websocket.send_json({"song": current_song, "bands": safe_bands})
-            await asyncio.sleep(0.075)
+            await asyncio.sleep(0.08)  # Slightly reduced rate for better performance
         except (asyncio.CancelledError, Exception):
             break
 
@@ -225,9 +233,6 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     signal.siginterrupt(signal.SIGINT, True)
-    
-    print("Starting Spotify Visualizer...")
-    print("Press Ctrl+C to stop\n")
     
     init_audio()
     

@@ -90,12 +90,23 @@ const App: React.FC = () => {
   // Global mousemove listener for the menu and controls.
   useEffect(() => {
     let timeoutId: number;
-    const handleGlobalMouseMove = () => {
-      setMenuVisible(true);
-      clearTimeout(timeoutId);
-      timeoutId = window.setTimeout(() => setMenuVisible(false), 5000);
+    let lastCheck = 0;
+    
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      const now = performance.now();
+      // Throttle to reduce CPU usage
+      if (now - lastCheck < 100) return;
+      lastCheck = now;
+      
+      // Only show controls near bottom of screen
+      if (e.clientY > window.innerHeight - 150) {
+        setMenuVisible(true);
+        clearTimeout(timeoutId);
+        timeoutId = window.setTimeout(() => setMenuVisible(false), 3000);
+      }
     };
-    document.addEventListener("mousemove", handleGlobalMouseMove);
+    
+    document.addEventListener("mousemove", handleGlobalMouseMove, { passive: true });
     return () => {
       document.removeEventListener("mousemove", handleGlobalMouseMove);
       clearTimeout(timeoutId);
@@ -110,9 +121,8 @@ const App: React.FC = () => {
       } else {
         await fetch("http://localhost:5000/control/play", { method: "POST" });
       }
-      // We do not toggle isPlaying locally because it's updated from Spotify.
     } catch (e) {
-      console.error(e);
+      // Silently fail - network errors are expected occasionally
     }
   };
 
@@ -120,7 +130,7 @@ const App: React.FC = () => {
     try {
       await fetch("http://localhost:5000/control/next", { method: "POST" });
     } catch (e) {
-      console.error(e);
+      // Silently fail
     }
   };
 
@@ -128,7 +138,7 @@ const App: React.FC = () => {
     try {
       await fetch("http://localhost:5000/control/back", { method: "POST" });
     } catch (e) {
-      console.error(e);
+      // Silently fail
     }
   };
 
@@ -237,11 +247,6 @@ useEffect(() => {
     const currentAmplitude = Math.max(...currentBuckets);
   
     // Log the amplitudes for buckets 1-5.
-    console.log(
-      "Buckets 1-5:",
-      bucketIndices.map(i => `bucket${i}: ${bands[`bucket${i}`]?.toFixed(2)}`).join(", ")
-    );
-  
     const now = performance.now();
   
     // Update the short-term buffer with the current maximum amplitude.
@@ -263,17 +268,10 @@ useEffect(() => {
   
     const isHigh = currentAmplitude > dynamicThreshold;
   
-    console.log(`Current Amplitude: ${currentAmplitude.toFixed(2)}; Dynamic Threshold: ${dynamicThreshold.toFixed(2)}`);
-  
     if (isHigh && !bucket5WasHighRef.current && now - lastRippleTriggerRef.current >= debounceMs) {
       ripplesRef.current.push({ startTime: now });
       lastRippleTriggerRef.current = now;
       bucket5WasHighRef.current = true;
-      console.log(
-        `Bass Hit: Buckets 1-5: ${bucketIndices.map(i => bands[`bucket${i}`]?.toFixed(2)).join(", ")}, ` +
-        `Dynamic Threshold: ${dynamicThreshold.toFixed(2)}, ` +
-        `Current Amplitude: ${currentAmplitude.toFixed(2)}`
-      );
     } else if (!isHigh) {
       bucket5WasHighRef.current = false;
     }
@@ -445,56 +443,71 @@ useEffect(() => {
         return true;
       });
 
-      // --- Draw Integrated Footer ---
-      const timeSinceMouse = nowTime - lastMouseMoveRef.current;
-      let footerOpacity = 0;
-      if (timeSinceMouse < 3000) {
-        footerOpacity = 1;
-      } else if (timeSinceMouse < 4000) {
-        footerOpacity = 0.4 - (timeSinceMouse - 3000) / 1000;
-      }
-      if (footerOpacity > 0) {
-        const footerHeight = 200;
+      // --- Draw Spotify-style Footer (only when menu visible) ---
+      if (menuVisible) {
+        const footerHeight = 140;
         const footerY = canvas.height - footerHeight;
+        
+        // Very subtle background fade
         const footerGradient = ctx.createLinearGradient(0, footerY, 0, canvas.height);
         footerGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
-        footerGradient.addColorStop(1, `rgba(0, 0, 0, ${0.8 * footerOpacity})`);
+        footerGradient.addColorStop(1, "rgba(0, 0, 0, 0.3)");
         ctx.fillStyle = footerGradient;
         ctx.fillRect(0, footerY, canvas.width, footerHeight);
 
         ctx.save();
-        ctx.globalAlpha = footerOpacity;
-        const iconSize = 60;
-        const iconMarginRight = 20;
-        const iconX = 30;
-        if (artistIconRef.current) {
-          const iconY = footerY + (footerHeight - iconSize) / 2;
+        
+        // Album art (square, Spotify style) - centered vertically with text
+        const artSize = 80;
+        const artX = 24;
+        const artY = footerY + (footerHeight - artSize) / 2 + 13;
+        if (albumImageRef.current) {
           ctx.save();
           ctx.beginPath();
-          ctx.arc(iconX + iconSize / 2, iconY + iconSize / 2, iconSize / 2, 0, Math.PI * 2);
+          const radius = 6;
+          ctx.moveTo(artX + radius, artY);
+          ctx.lineTo(artX + artSize - radius, artY);
+          ctx.quadraticCurveTo(artX + artSize, artY, artX + artSize, artY + radius);
+          ctx.lineTo(artX + artSize, artY + artSize - radius);
+          ctx.quadraticCurveTo(artX + artSize, artY + artSize, artX + artSize - radius, artY + artSize);
+          ctx.lineTo(artX + radius, artY + artSize);
+          ctx.quadraticCurveTo(artX, artY + artSize, artX, artY + artSize - radius);
+          ctx.lineTo(artX, artY + radius);
+          ctx.quadraticCurveTo(artX, artY, artX + radius, artY);
           ctx.closePath();
           ctx.clip();
-          ctx.drawImage(artistIconRef.current, iconX, iconY, iconSize, iconSize);
+          ctx.drawImage(albumImageRef.current, artX, artY, artSize, artSize);
           ctx.restore();
         }
-        const textX = 30 + (artistIconRef.current ? iconSize + iconMarginRight : 0);
-        const progressBarX = 400;
-        const maxTextWidth = progressBarX - textX - 10;
 
-        ctx.fillStyle = "#fff";
+        // Song info (clean typography) - aligned with album art
+        const textX = artX + artSize + 20;
+        const albumCenterY = artY + artSize / 2;
+        const maxTextWidth = canvas.width - textX - 200;
+
         ctx.textAlign = "left";
-        ctx.font = "bold 22px Arial";
-        drawEllipsedText(ctx, song.title, textX, footerY + 90, maxTextWidth);
-        ctx.font = "18px Arial";
-        drawEllipsedText(ctx, song.artists, textX, footerY + 130, maxTextWidth);
-        const progressBarHeight = 6;
-        const progressBarY = footerY + (footerHeight - progressBarHeight) / 2;
-        const progressBarRadius = progressBarHeight / 2;
-        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-        drawRoundedRect(ctx, progressBarX, progressBarY, canvas.width - progressBarX - 30, progressBarHeight, progressBarRadius);
-        const elapsedWidth = (canvas.width - progressBarX - 30) * song.progress;
-        ctx.fillStyle = "#fff";
-        drawRoundedRect(ctx, progressBarX, progressBarY, elapsedWidth, progressBarHeight, progressBarRadius);
+        ctx.font = "600 16px 'Segoe UI', -apple-system, sans-serif";
+        ctx.fillStyle = "#ffffff";
+        // Center title vertically with album art
+        drawEllipsedText(ctx, song.title, textX, albumCenterY - 8, maxTextWidth);
+        
+        ctx.font = "400 14px 'Segoe UI', -apple-system, sans-serif";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+        // Center artist vertically with album art
+        drawEllipsedText(ctx, song.artists, textX, albumCenterY + 16, maxTextWidth);
+
+        // Minimal progress bar (Spotify style) - at bottom of footer
+        const progressBarY = footerY + footerHeight - 20;
+        const progressBarHeight = 3;
+        const progressBarX = textX;
+        const progressBarWidth = canvas.width - progressBarX - 24;
+        
+        // No background track - just the progress line
+        const elapsedWidth = progressBarWidth * song.progress;
+        if (elapsedWidth > 0) {
+          ctx.fillStyle = "#ffffff";
+          drawRoundedRect(ctx, progressBarX, progressBarY, elapsedWidth, progressBarHeight, 1.5);
+        }
 
         ctx.restore();
       }
@@ -528,7 +541,7 @@ useEffect(() => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelAnimationFrame(animationFrameId.current);
     };
-  }, [bands, gradientColors, song, config.bassThump]);
+  }, [bands, gradientColors, song, config.bassThump, menuVisible]);
 
   return (
     <>
@@ -594,57 +607,114 @@ useEffect(() => {
           </div>
         )}
       </div>
-      {/* Bottom overlay control buttons */}
+      {/* Spotify-style control buttons - positioned in footer area, above progress bar */}
       <div
         style={{
           position: "fixed",
-          bottom: 20,
-          left: 0,
-          right: 0,
+          bottom: menuVisible ? "50px" : "30px",
+          left: "50%",
+          transform: "translateX(-50%)",
           zIndex: 1000,
-          textAlign: "center",
+          display: "flex",
+          alignItems: "center",
+          gap: "16px",
           opacity: menuVisible ? 1 : 0,
-          transition: "opacity 0.5s",
+          transition: "all 0.3s ease",
+          pointerEvents: menuVisible ? "auto" : "none",
         }}
       >
         <button
           onClick={handleBack}
+          onMouseDown={(e) => e.preventDefault()}
           style={{
-            margin: "0 10px",
-            padding: "10px",
-            fontSize: "24px",
-            cursor: "pointer",
-            background: "transparent",
+            width: "32px",
+            height: "32px",
+            borderRadius: "50%",
             border: "none",
-            color: "#fff",
+            background: "transparent",
+            color: "#ffffff",
+            fontSize: "18px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "transform 0.2s ease",
+            userSelect: "none",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "scale(1.1)";
+            e.currentTarget.style.color = "#ffffff";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "scale(1)";
+            e.currentTarget.style.color = "#ffffff";
           }}
         >
           ⏮
         </button>
         <button
           onClick={handlePlayPause}
+          onMouseDown={(e) => e.preventDefault()}
           style={{
-            margin: "0 10px",
-            padding: "10px",
-            fontSize: "24px",
-            cursor: "pointer",
-            background: "transparent",
+            width: "40px",
+            height: "40px",
+            borderRadius: "50%",
             border: "none",
-            color: "#fff",
+            background: "#ffffff",
+            color: "#000000",
+            fontSize: "20px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "transform 0.2s ease",
+            userSelect: "none",
+            lineHeight: 1,
+            padding: 0,
+            margin: 0,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "scale(1.1)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "scale(1)";
           }}
         >
-          {isPlaying ? "⏸" : "▶"}
+          <span style={{ 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "center", 
+            lineHeight: 1,
+            transform: isPlaying ? "none" : "translateX(1px)"
+          }}>
+            {isPlaying ? "⏸" : "▶"}
+          </span>
         </button>
         <button
           onClick={handleNext}
+          onMouseDown={(e) => e.preventDefault()}
           style={{
-            margin: "0 10px",
-            padding: "10px",
-            fontSize: "24px",
-            cursor: "pointer",
-            background: "transparent",
+            width: "32px",
+            height: "32px",
+            borderRadius: "50%",
             border: "none",
-            color: "#fff",
+            background: "transparent",
+            color: "#ffffff",
+            fontSize: "18px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "transform 0.2s ease",
+            userSelect: "none",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "scale(1.1)";
+            e.currentTarget.style.color = "#ffffff";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "scale(1)";
+            e.currentTarget.style.color = "#ffffff";
           }}
         >
           ⏭
