@@ -39,7 +39,7 @@ async def add_cors_headers(response):
 # Global State
 current_song = {
     "id": "", "title": "", "artists": "", "album_cover": "",
-    "artist_icon": "", "progress": 0, "is_playing": False
+    "artist_icon": "", "progress": 0, "is_playing": False, "genres": []
 }
 frequency_bands = {f"bucket{i}": 0 for i in range(1, 26)}
 shutdown_event = asyncio.Event()
@@ -116,11 +116,15 @@ async def fetch_current_song():
                 
                 if new_id != current_song.get("id", ""):
                     artist_icon = ""
+                    genres = []
                     if item["artists"]:
                         try:
+                            # Get genres from the primary artist (tracks don't have genres, artists do)
                             artist = spotify.artist(item["artists"][0]["id"])
                             if artist.get("images"):
                                 artist_icon = artist["images"][0]["url"]
+                            if artist.get("genres"):
+                                genres = artist["genres"]
                         except:
                             pass
                     
@@ -130,6 +134,7 @@ async def fetch_current_song():
                         "artists": ", ".join([a["name"] for a in item["artists"]]),
                         "album_cover": item["album"]["images"][1]["url"] if len(item["album"]["images"]) > 1 else "",
                         "artist_icon": artist_icon,
+                        "genres": genres,
                     })
                 
                 progress_ms = track.get("progress_ms", 0)

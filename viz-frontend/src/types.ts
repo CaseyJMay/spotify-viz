@@ -5,6 +5,7 @@ export interface Song {
   progress: number;
   is_playing: boolean;
   artist_icon?: string;
+  genres?: string[];
 }
 
 export interface Bands {
@@ -20,8 +21,18 @@ export interface Ripple {
   startTime: number;
 }
 
+export interface PianoParticle {
+  startTime: number;
+  x: number;
+  y: number;
+  velocity: number;
+  size: number;
+  opacity: number;
+}
+
 export interface Config {
   ripples: boolean;
   bassThump: boolean;
+  pianoParticles: boolean;
 }
 

@@ -6,6 +6,8 @@ import {
   usePlaybackControls,
   useRippleDetection,
   useImageLoading,
+  useGenreSettings,
+  usePianoParticles,
 } from "./hooks";
 import { PlaybackControls, ConfigMenu } from "./components";
 import { drawVisualizer } from "./canvas";
@@ -15,6 +17,7 @@ const App: React.FC = () => {
   const [config, setConfig] = useState<Config>({
     ripples: true,
     bassThump: false,
+    pianoParticles: false,
   });
 
   // Custom hooks
@@ -29,6 +32,23 @@ const App: React.FC = () => {
     albumImageRef,
   } = useImageLoading(song);
 
+  // Genre-based settings (auto-apply enabled by default)
+  const { recordOverride } = useGenreSettings({
+    song,
+    config,
+    onConfigChange: setConfig,
+    autoApply: true,
+  });
+
+  // Piano particles (needs canvas dimensions)
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const { particlesRef: pianoParticlesRef } = usePianoParticles(
+    bands,
+    config,
+    canvasSize.width,
+    canvasSize.height
+  );
+
   // Canvas drawing effect
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -39,6 +59,7 @@ const App: React.FC = () => {
     const resizeCanvas = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      setCanvasSize({ width: canvas.width, height: canvas.height });
     };
     window.addEventListener("resize", resizeCanvas);
     resizeCanvas();
@@ -62,6 +83,7 @@ const App: React.FC = () => {
         albumImage: albumImageRef.current,
         ripples: ripplesRef.current,
         lastRippleTrigger: lastRippleTriggerRef.current,
+        pianoParticles: pianoParticlesRef.current,
         menuVisible,
       });
 
@@ -89,7 +111,7 @@ const App: React.FC = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelAnimationFrame(animationFrameId.current);
     };
-  }, [bands, gradientColors, song, config, menuVisible, ripplesRef, lastRippleTriggerRef, gradientColorsRef, transitionProgressRef, albumImageRef]);
+  }, [bands, gradientColors, song, config, menuVisible, ripplesRef, lastRippleTriggerRef, gradientColorsRef, transitionProgressRef, albumImageRef, pianoParticlesRef]);
 
   return (
     <>
@@ -98,7 +120,10 @@ const App: React.FC = () => {
         expanded={menuExpanded}
         config={config}
         onToggleExpanded={() => setMenuExpanded((prev) => !prev)}
-        onConfigChange={(updates) => setConfig((prev) => ({ ...prev, ...updates }))}
+        onConfigChange={(updates) => {
+          recordOverride(updates); // Record user override
+          setConfig((prev) => ({ ...prev, ...updates }));
+        }}
       />
       <PlaybackControls
         isPlaying={isPlaying}

@@ -29,6 +29,7 @@ export function useSpotifyData() {
           progress: data.song.progress,
           is_playing: data.song.is_playing,
           artist_icon: data.song.artist_icon,
+          genres: data.song.genres || [],
         }));
         setIsPlaying(data.song.is_playing);
       }

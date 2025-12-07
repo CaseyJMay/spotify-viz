@@ -1,4 +1,4 @@
-import { Bands, Song, Config, Ripple } from "../types";
+import { Bands, Song, Config, Ripple, PianoParticle } from "../types";
 import {
   TOTAL_BARS,
   ALBUM_RADIUS,
@@ -15,6 +15,7 @@ import {
   RIPPLE_LIFETIME,
   RIPPLE_OPACITY,
   RIPPLE_LINE_WIDTH,
+  PIANO_PARTICLE_LIFETIME,
 } from "../constants";
 import { drawRoundedRect, drawEllipsedText } from "../utils";
 
@@ -29,6 +30,7 @@ interface DrawVisualizerParams {
   albumImage: HTMLImageElement | null;
   ripples: Ripple[];
   lastRippleTrigger: number;
+  pianoParticles: PianoParticle[];
   menuVisible: boolean;
 }
 
@@ -43,6 +45,7 @@ export function drawVisualizer({
   albumImage,
   ripples,
   lastRippleTrigger,
+  pianoParticles,
   menuVisible,
 }: DrawVisualizerParams): void {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -144,6 +147,29 @@ export function drawVisualizer({
       ctx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2);
       ctx.stroke();
     });
+
+  // Draw piano particles
+  if (config.pianoParticles && pianoParticles.length > 0) {
+    pianoParticles.forEach((particle) => {
+      const elapsed = nowTime - particle.startTime;
+      if (elapsed > PIANO_PARTICLE_LIFETIME) return;
+
+      const t = elapsed / PIANO_PARTICLE_LIFETIME;
+      const currentY = particle.y - particle.velocity * elapsed;
+      const currentOpacity = particle.opacity * (1 - t);
+      const currentSize = particle.size * (1 - t * 0.3); // Slight size fade
+
+      // Soft, warm white/cream color for piano
+      ctx.fillStyle = `rgba(255, 250, 240, ${currentOpacity})`;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = `rgba(255, 250, 240, ${currentOpacity * 0.5})`;
+      
+      ctx.beginPath();
+      ctx.arc(particle.x, currentY, currentSize, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.shadowBlur = 0;
+  }
 
   // Draw footer
   if (menuVisible) {

@@ -31,3 +31,15 @@ export const RIPPLE_LIFETIME = 1000;
 export const RIPPLE_OPACITY = 0.3;
 export const RIPPLE_LINE_WIDTH = 8;
 
+// Piano particle constants
+// Piano notes range from ~30 Hz (A0) to ~4200 Hz (C8)
+// Buckets: 3-19 cover ~60-4000 Hz (full piano range including lower notes)
+export const PIANO_BUCKET_INDICES = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+export const PIANO_PARTICLE_LIFETIME = 2000;
+export const PIANO_PARTICLE_MIN_THRESHOLD = 15;
+export const PIANO_PARTICLE_DEBOUNCE_MS = 50;
+export const PIANO_PARTICLE_VELOCITY_MIN = 0.5;
+export const PIANO_PARTICLE_VELOCITY_MAX = 1.2;
+export const PIANO_PARTICLE_SIZE_MIN = 4;
+export const PIANO_PARTICLE_SIZE_MAX = 10;
+
