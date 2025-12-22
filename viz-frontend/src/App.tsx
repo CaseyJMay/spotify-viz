@@ -11,6 +11,7 @@ import {
 } from "./hooks";
 import { PlaybackControls, ConfigMenu } from "./components";
 import { drawVisualizer } from "./canvas";
+import { DEFAULT_VISUALIZER } from "./visualizers";
 
 const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -18,6 +19,7 @@ const App: React.FC = () => {
     ripples: true,
     bassThump: false,
     pianoParticles: false,
+    visualizer: DEFAULT_VISUALIZER,
   });
 
   // Custom hooks

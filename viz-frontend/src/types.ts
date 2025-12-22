@@ -34,5 +34,6 @@ export interface Config {
   ripples: boolean;
   bassThump: boolean;
   pianoParticles: boolean;
+  visualizer: string; // Visualizer ID (e.g., "radialBars", "lineWave", "fluidShapes")
 }
 

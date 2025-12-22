@@ -1,5 +1,6 @@
 import React from "react";
 import { Config } from "../types";
+import { VISUALIZERS } from "../visualizers";
 
 interface ConfigMenuProps {
   visible: boolean;
@@ -70,6 +71,31 @@ export const ConfigMenu: React.FC<ConfigMenuProps> = ({
               />
               Enable Bass Thump
             </label>
+          </div>
+          <div style={{ marginTop: "15px", paddingTop: "15px", borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
+            <label style={{ display: "block", marginBottom: "8px", fontSize: "12px", color: "rgba(255, 255, 255, 0.7)" }}>
+              Visualizer Style
+            </label>
+            <select
+              value={config.visualizer || "radialBars"}
+              onChange={(e) => onConfigChange({ visualizer: e.target.value })}
+              style={{
+                width: "100%",
+                padding: "6px",
+                background: "rgba(255, 255, 255, 0.1)",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                borderRadius: "4px",
+                color: "#fff",
+                fontSize: "14px",
+                cursor: "pointer",
+              }}
+            >
+              {Object.entries(VISUALIZERS).map(([id, viz]) => (
+                <option key={id} value={id}>
+                  {viz.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       )}
