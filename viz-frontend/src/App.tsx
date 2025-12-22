@@ -16,7 +16,7 @@ import { DEFAULT_VISUALIZER } from "./visualizers";
 const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [config, setConfig] = useState<Config>({
-    ripples: true,
+    ripples: false,
     bassThump: false,
     pianoParticles: false,
     visualizer: DEFAULT_VISUALIZER,

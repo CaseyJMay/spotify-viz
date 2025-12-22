@@ -177,22 +177,53 @@ async def oauth_callback():
     </body></html>
     """, 200
 
+def get_active_device_id():
+    """Get the active device ID, or the first available device."""
+    try:
+        # Check for active device
+        playback = spotify.current_playback()
+        if playback and playback.get("device") and playback["device"].get("id"):
+            return playback["device"]["id"]
+        
+        # Fall back to first available device
+        devices = spotify.devices()
+        if devices and devices.get("devices") and len(devices["devices"]) > 0:
+            return devices["devices"][0]["id"]
+        
+        return None
+    except:
+        return None
+
 @app.route("/control/<action>", methods=["POST"])
 async def control_playback(action):
     """Control Spotify playback."""
     try:
-        actions = {
-            "play": spotify.start_playback,
-            "pause": spotify.pause_playback,
-            "next": spotify.next_track,
-            "back": spotify.previous_track
-        }
-        if action not in actions:
+        device_id = get_active_device_id()
+        
+        if action == "play":
+            if device_id:
+                spotify.start_playback(device_id=device_id)
+            else:
+                spotify.start_playback()
+        elif action == "pause":
+            spotify.pause_playback()
+        elif action == "next":
+            spotify.next_track()
+        elif action == "back":
+            spotify.previous_track()
+        else:
             return jsonify({"error": "Invalid action"}), 400
-        actions[action]()
+        
         return jsonify({"status": "ok", "action": action}), 200
     except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+        error_msg = str(e)
+        # Return more helpful error messages
+        if "404" in error_msg or "Not found" in error_msg:
+            return jsonify({
+                "status": "error", 
+                "error": "No active device found. Please start playing music on a Spotify device first."
+            }), 404
+        return jsonify({"status": "error", "error": error_msg}), 500
 
 # Lifecycle
 @app.before_serving
