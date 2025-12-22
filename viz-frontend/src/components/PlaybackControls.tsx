@@ -23,17 +23,29 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
         left: "50%",
         transform: "translateX(-50%)",
         zIndex: 1000,
-        display: "flex",
-        alignItems: "center",
-        gap: "20px", // More spacing between buttons
         opacity: visible ? 1 : 0,
         transition: "all 0.3s ease",
         pointerEvents: visible ? "auto" : "none",
       }}
     >
-      <ControlButton onClick={onBack} icon="⏮" size={36} />
-      <PlayPauseButton onClick={onPlayPause} isPlaying={isPlaying} />
-      <ControlButton onClick={onNext} icon="⏭" size={36} />
+      {/* Backdrop blur container for readability */}
+      <div
+        style={{
+          background: "rgba(0, 0, 0, 0.4)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          borderRadius: "32px",
+          padding: "8px 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: "20px",
+          boxShadow: "0 4px 16px rgba(0, 0, 0, 0.3)",
+        }}
+      >
+        <ControlButton onClick={onBack} icon="⏮" size={36} />
+        <PlayPauseButton onClick={onPlayPause} isPlaying={isPlaying} />
+        <ControlButton onClick={onNext} icon="⏭" size={36} />
+      </div>
     </div>
   );
 };

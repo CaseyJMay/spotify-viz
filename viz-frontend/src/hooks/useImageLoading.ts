@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Song } from "../types";
-import { extractPrimaryColors } from "../utils";
+import { extractPrimaryColors, ensureReadableColors } from "../utils";
 
 export function useImageLoading(song: Song) {
   const [gradientColors, setGradientColors] = useState<string[]>(["#000", "#000"]);
@@ -31,9 +31,11 @@ export function useImageLoading(song: Song) {
         ctx.drawImage(img, 0, 0, img.width, img.height);
         const imageData = ctx.getImageData(0, 0, img.width, img.height);
         const primaryColors = extractPrimaryColors(imageData);
-        if (JSON.stringify(primaryColors) !== JSON.stringify(gradientColorsRef.current)) {
-          gradientColorsRef.current = primaryColors;
-          setGradientColors(primaryColors);
+        // Darken colors that are too bright for readability
+        const readableColors = ensureReadableColors(primaryColors, 180, 0.4);
+        if (JSON.stringify(readableColors) !== JSON.stringify(gradientColorsRef.current)) {
+          gradientColorsRef.current = readableColors;
+          setGradientColors(readableColors);
           transitionProgressRef.current = 0;
         }
       }

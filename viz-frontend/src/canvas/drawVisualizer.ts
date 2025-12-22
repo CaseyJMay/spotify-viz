@@ -186,13 +186,7 @@ function drawFooter(
 ): void {
   const footerY = canvas.height - FOOTER_HEIGHT;
 
-  // Background fade (more prominent for readability)
-  const footerGradient = ctx.createLinearGradient(0, footerY, 0, canvas.height);
-  footerGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
-  footerGradient.addColorStop(0.5, "rgba(0, 0, 0, 0.4)");
-  footerGradient.addColorStop(1, "rgba(0, 0, 0, 0.6)");
-  ctx.fillStyle = footerGradient;
-  ctx.fillRect(0, footerY, canvas.width, FOOTER_HEIGHT);
+  // No background gradient - clean, minimal look
 
   ctx.save();
 
