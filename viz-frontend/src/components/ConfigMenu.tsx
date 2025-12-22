@@ -113,6 +113,13 @@ export const ConfigMenu: React.FC<ConfigMenuProps> = ({
                 onChange={(checked) => onConfigChange({ bassThump: checked })}
               />
             </div>
+            <div style={{ marginTop: "12px" }}>
+              <ToggleSwitch
+                label="Piano Particles"
+                checked={config.pianoParticles}
+                onChange={(checked) => onConfigChange({ pianoParticles: checked })}
+              />
+            </div>
           </div>
 
           <div style={{ 

@@ -19,7 +19,7 @@ const App: React.FC = () => {
     ripples: false,
     bassThump: false,
     pianoParticles: false,
-    visualizer: DEFAULT_VISUALIZER,
+    visualizer: DEFAULT_VISUALIZER, // Defaults to fluidShapes
   });
 
   // Custom hooks
@@ -38,7 +38,7 @@ const App: React.FC = () => {
   const { recordOverride } = useGenreSettings({
     song,
     config,
-    onConfigChange: setConfig,
+    onConfigChange: (updates) => setConfig((prev) => ({ ...prev, ...updates })),
     autoApply: true,
   });
 

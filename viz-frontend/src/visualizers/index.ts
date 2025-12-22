@@ -11,7 +11,7 @@ export const VISUALIZERS: Record<string, Visualizer> = {
   fluidShapes: fluidShapesVisualizer,
 };
 
-export const DEFAULT_VISUALIZER = "radialBars";
+export const DEFAULT_VISUALIZER = "fluidShapes";
 
 export function getVisualizer(id: string): Visualizer {
   return VISUALIZERS[id] || VISUALIZERS[DEFAULT_VISUALIZER];
