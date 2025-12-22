@@ -8,12 +8,12 @@ export const BAR_WIDTH = 8;
 export const MAX_BAR_LENGTH = 100;
 
 // Footer constants
-export const FOOTER_HEIGHT = 140;
-export const ART_SIZE = 80;
-export const ART_X = 24;
-export const ART_OFFSET_Y = 13;
-export const PROGRESS_BAR_HEIGHT = 3;
-export const PROGRESS_BAR_OFFSET_Y = 20;
+export const FOOTER_HEIGHT = 180; // Increased for better readability
+export const ART_SIZE = 112; // Larger album art (Spotify-like)
+export const ART_X = 32; // More padding
+export const ART_OFFSET_Y = 0; // Centered vertically
+export const PROGRESS_BAR_HEIGHT = 5; // Thicker progress bar to match larger art
+export const PROGRESS_BAR_OFFSET_Y = 24; // More spacing from bottom
 
 // Ripple detection constants
 export const BUFFER_DURATION = 1000;

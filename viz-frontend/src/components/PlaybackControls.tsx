@@ -19,21 +19,21 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
     <div
       style={{
         position: "fixed",
-        bottom: visible ? "50px" : "30px",
+        bottom: visible ? "60px" : "30px", // Closer to bottom, above footer
         left: "50%",
         transform: "translateX(-50%)",
         zIndex: 1000,
         display: "flex",
         alignItems: "center",
-        gap: "16px",
+        gap: "20px", // More spacing between buttons
         opacity: visible ? 1 : 0,
         transition: "all 0.3s ease",
         pointerEvents: visible ? "auto" : "none",
       }}
     >
-      <ControlButton onClick={onBack} icon="⏮" size={32} />
+      <ControlButton onClick={onBack} icon="⏮" size={36} />
       <PlayPauseButton onClick={onPlayPause} isPlaying={isPlaying} />
-      <ControlButton onClick={onNext} icon="⏭" size={32} />
+      <ControlButton onClick={onNext} icon="⏭" size={36} />
     </div>
   );
 };
@@ -87,13 +87,13 @@ const PlayPauseButton: React.FC<PlayPauseButtonProps> = ({ onClick, isPlaying })
       onClick={onClick}
       onMouseDown={(e) => e.preventDefault()}
       style={{
-        width: "40px",
-        height: "40px",
+        width: "48px",
+        height: "48px",
         borderRadius: "50%",
         border: "none",
         background: "#ffffff",
         color: "#000000",
-        fontSize: "20px",
+        fontSize: "22px",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",

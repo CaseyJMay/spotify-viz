@@ -82,7 +82,7 @@ export function drawVisualizer({
     menuVisible,
   });
 
-  // Draw ripples
+  // Draw ripples with controlled distortion
   const nowTime = performance.now();
   const maxRippleRadius = Math.sqrt(centerX * centerX + centerY * centerY);
   ripples
@@ -93,12 +93,59 @@ export function drawVisualizer({
     .forEach((ripple) => {
       const elapsed = nowTime - ripple.startTime;
       const t = elapsed / RIPPLE_LIFETIME;
-      const currentRadius = ALBUM_RADIUS + t * (maxRippleRadius - ALBUM_RADIUS);
+      const baseRadius = ALBUM_RADIUS + t * (maxRippleRadius - ALBUM_RADIUS);
       const opacity = RIPPLE_OPACITY * (1 - t);
+      
+      // Use ripple startTime as seed for consistent distortion per ripple
+      const seed = ripple.startTime;
+      const distortionAmount = 5 * (1 - t * 0.5); // Reduced distortion, less as ripple expands
+      const waveFrequency = 8; // Lower frequency for smoother waves
+      
       ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
       ctx.lineWidth = RIPPLE_LINE_WIDTH;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2);
+      
+      // Draw wavy circle with smooth curves
+      const numPoints = 128; // More points for smoother curves
+      const points: Array<{ x: number; y: number }> = [];
+      
+      // Calculate all points first
+      for (let i = 0; i <= numPoints; i++) {
+        const angle = (i / numPoints) * Math.PI * 2;
+        
+        // Add smoother wave distortion using sine waves with lower frequencies
+        const wave1 = Math.sin(angle * waveFrequency + seed * 0.001) * distortionAmount;
+        const wave2 = Math.sin(angle * (waveFrequency * 1.5) + seed * 0.0015) * (distortionAmount * 0.5);
+        const wave3 = Math.sin(angle * (waveFrequency * 2.1) + seed * 0.0008) * (distortionAmount * 0.3);
+        
+        // Combine waves for organic distortion
+        const radius = baseRadius + wave1 + wave2 + wave3;
+        
+        const x = centerX + Math.cos(angle) * radius;
+        const y = centerY + Math.sin(angle) * radius;
+        points.push({ x, y });
+      }
+      
+      // Draw with smooth bezier curves
+      if (points.length > 0) {
+        ctx.moveTo(points[0].x, points[0].y);
+        
+        for (let i = 1; i < points.length; i++) {
+          const p0 = points[(i - 1 + points.length) % points.length];
+          const p1 = points[i % points.length];
+          const p2 = points[(i + 1) % points.length];
+          
+          // Calculate control points for smooth bezier curve
+          const cp1x = p0.x + (p1.x - p0.x) * 0.5;
+          const cp1y = p0.y + (p1.y - p0.y) * 0.5;
+          const cp2x = p1.x - (p2.x - p1.x) * 0.5;
+          const cp2y = p1.y - (p2.y - p1.y) * 0.5;
+          
+          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p1.x, p1.y);
+        }
+      }
+      
+      ctx.closePath();
       ctx.stroke();
     });
 
@@ -139,17 +186,21 @@ function drawFooter(
 ): void {
   const footerY = canvas.height - FOOTER_HEIGHT;
 
-  // Background fade
+  // Background fade (more prominent for readability)
   const footerGradient = ctx.createLinearGradient(0, footerY, 0, canvas.height);
   footerGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
-  footerGradient.addColorStop(1, "rgba(0, 0, 0, 0.3)");
+  footerGradient.addColorStop(0.5, "rgba(0, 0, 0, 0.4)");
+  footerGradient.addColorStop(1, "rgba(0, 0, 0, 0.6)");
   ctx.fillStyle = footerGradient;
   ctx.fillRect(0, footerY, canvas.width, FOOTER_HEIGHT);
 
   ctx.save();
 
-  // Album art
-  const artY = footerY + (FOOTER_HEIGHT - ART_SIZE) / 2 + ART_OFFSET_Y;
+  // Progress bar position - at bottom of footer
+  const progressBarY = footerY + FOOTER_HEIGHT - PROGRESS_BAR_OFFSET_Y;
+  
+  // Album art - bottom edge aligned with progress bar center, moved down 5px
+  const artY = progressBarY - ART_SIZE + 5; // Bottom of art aligns with progress bar, moved down 5px
   if (albumImage) {
     ctx.save();
     ctx.beginPath();
@@ -169,24 +220,31 @@ function drawFooter(
     ctx.restore();
   }
 
-  // Song info
+  // Song info - positioned above progress bar, aligned with album art
   const textX = ART_X + ART_SIZE + 20;
-  const albumCenterY = artY + ART_SIZE / 2;
   const maxTextWidth = canvas.width - textX - 200;
-
+  
+  // Position text above progress bar
+  const textBaseY = progressBarY - 14; // 14px above progress bar
+  
   ctx.textAlign = "left";
-  ctx.font = "600 16px 'Segoe UI', -apple-system, sans-serif";
+  ctx.textBaseline = "alphabetic";
+  
+  // Title - larger, positioned above artist
+  ctx.font = "700 21px 'Segoe UI', -apple-system, sans-serif";
   ctx.fillStyle = "#ffffff";
-  drawEllipsedText(ctx, song.title, textX, albumCenterY - 8, maxTextWidth);
+  const titleY = textBaseY - 26; // More spacing between title and artist
+  drawEllipsedText(ctx, song.title, textX, titleY, maxTextWidth);
 
-  ctx.font = "400 14px 'Segoe UI', -apple-system, sans-serif";
+  // Artist - larger, positioned between title and progress bar
+  ctx.font = "400 17px 'Segoe UI', -apple-system, sans-serif";
   ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-  drawEllipsedText(ctx, song.artists, textX, albumCenterY + 16, maxTextWidth);
+  const artistY = textBaseY - 2; // Just above progress bar
+  drawEllipsedText(ctx, song.artists, textX, artistY, maxTextWidth);
 
-  // Progress bar
-  const progressBarY = footerY + FOOTER_HEIGHT - PROGRESS_BAR_OFFSET_Y;
+  // Progress bar - aligned with text start
   const progressBarX = textX;
-  const progressBarWidth = canvas.width - progressBarX - 24;
+  const progressBarWidth = canvas.width - progressBarX - 32;
   const elapsedWidth = progressBarWidth * song.progress;
 
   if (elapsedWidth > 0) {
