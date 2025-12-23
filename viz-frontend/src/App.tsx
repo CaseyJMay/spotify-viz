@@ -8,6 +8,7 @@ import {
   useImageLoading,
   useGenreSettings,
   usePianoParticles,
+  useTrainingData,
 } from "./hooks";
 import { PlaybackControls, ConfigMenu } from "./components";
 import { drawVisualizer } from "./canvas";
@@ -50,6 +51,45 @@ const App: React.FC = () => {
     canvasSize.width,
     canvasSize.height
   );
+
+  // Training data collection
+  const trainingData = useTrainingData();
+
+  // Keyboard shortcuts for training data collection
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Only trigger if not typing in an input field
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+
+      // Spacebar to record bass hit (only when recording)
+      if (e.key === " ") {
+        e.preventDefault(); // Prevent page scroll
+        if (trainingData.isRecording) {
+          trainingData.recordSample(bands, song, "bass_hit");
+        }
+      }
+
+      // Enter to stop recording and auto-export
+      if (e.key === "Enter") {
+        if (trainingData.isRecording && trainingData.samples.length > 0) {
+          trainingData.stopRecording();
+          // Small delay to ensure state updates, then export
+          setTimeout(() => {
+            trainingData.exportData();
+          }, 100);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyPress);
+    return () => window.removeEventListener("keydown", handleKeyPress);
+  }, [bands, song, trainingData]);
 
   // Canvas drawing effect
   useEffect(() => {
@@ -121,6 +161,9 @@ const App: React.FC = () => {
         visible={menuVisible}
         expanded={menuExpanded}
         config={config}
+        trainingData={trainingData}
+        song={song}
+        bands={bands}
         onToggleExpanded={() => setMenuExpanded((prev) => !prev)}
         onConfigChange={(updates) => {
           recordOverride(updates); // Record user override

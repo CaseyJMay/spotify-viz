@@ -94,7 +94,9 @@ export function drawVisualizer({
       const elapsed = nowTime - ripple.startTime;
       const t = elapsed / RIPPLE_LIFETIME;
       const baseRadius = ALBUM_RADIUS + t * (maxRippleRadius - ALBUM_RADIUS);
-      const opacity = RIPPLE_OPACITY * (1 - t);
+      // Faster fade out - exponential curve for quicker opacity fade while keeping expansion speed
+      const fadeCurve = Math.pow(1 - t, 2.5); // Exponential fade - fades out faster
+      const opacity = RIPPLE_OPACITY * fadeCurve;
       
       // Use ripple startTime as seed for consistent distortion per ripple
       const seed = ripple.startTime;

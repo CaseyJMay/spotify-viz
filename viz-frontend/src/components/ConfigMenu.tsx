@@ -1,11 +1,15 @@
 import React from "react";
-import { Config } from "../types";
+import { Config, Bands, Song } from "../types";
 import { VISUALIZERS } from "../visualizers";
+import { useTrainingData } from "../hooks/useTrainingData";
 
 interface ConfigMenuProps {
   visible: boolean;
   expanded: boolean;
   config: Config;
+  trainingData: ReturnType<typeof useTrainingData>;
+  song?: Song;
+  bands: Bands;
   onToggleExpanded: () => void;
   onConfigChange: (updates: Partial<Config>) => void;
 }
@@ -14,6 +18,9 @@ export const ConfigMenu: React.FC<ConfigMenuProps> = ({
   visible,
   expanded,
   config,
+  trainingData,
+  song,
+  bands,
   onToggleExpanded,
   onConfigChange,
 }) => {
@@ -175,6 +182,162 @@ export const ConfigMenu: React.FC<ConfigMenuProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div style={{ 
+            marginTop: "20px", 
+            paddingTop: "20px", 
+            borderTop: "1px solid rgba(255, 255, 255, 0.1)" 
+          }}>
+            <div style={{ 
+              fontSize: "11px", 
+              fontWeight: 600, 
+              color: "rgba(255, 255, 255, 0.5)",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+              marginBottom: "12px"
+            }}>
+              Training Data
+            </div>
+            
+            <div style={{ 
+              fontSize: "12px", 
+              color: "rgba(255, 255, 255, 0.7)",
+              marginBottom: "12px"
+            }}>
+              Samples: {trainingData.samples.length}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {!trainingData.isRecording ? (
+                <button
+                  onClick={trainingData.startRecording}
+                  style={{
+                    padding: "10px 16px",
+                    background: "rgba(29, 185, 84, 0.2)",
+                    border: "1px solid rgba(29, 185, 84, 0.4)",
+                    borderRadius: "8px",
+                    color: "#1db954",
+                    fontSize: "13px",
+                    fontFamily: "'Segoe UI', -apple-system, sans-serif",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    transition: "all 0.2s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(29, 185, 84, 0.3)";
+                    e.currentTarget.style.borderColor = "rgba(29, 185, 84, 0.6)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "rgba(29, 185, 84, 0.2)";
+                    e.currentTarget.style.borderColor = "rgba(29, 185, 84, 0.4)";
+                  }}
+                >
+                  Start Recording
+                </button>
+              ) : (
+                <>
+                  <div style={{
+                    padding: "10px 16px",
+                    background: "rgba(29, 185, 84, 0.15)",
+                    border: "1px solid rgba(29, 185, 84, 0.3)",
+                    borderRadius: "8px",
+                    color: "#1db954",
+                    fontSize: "12px",
+                    fontFamily: "'Segoe UI', -apple-system, sans-serif",
+                    textAlign: "center",
+                    fontWeight: 500,
+                  }}>
+                    Recording... Press SPACE for each bass hit, ENTER to finish
+                  </div>
+                  <button
+                    onClick={() => {
+                      trainingData.stopRecording();
+                      if (trainingData.samples.length > 0) {
+                        setTimeout(() => trainingData.exportData(), 100);
+                      }
+                    }}
+                    style={{
+                      padding: "10px 16px",
+                      background: "rgba(255, 0, 0, 0.2)",
+                      border: "1px solid rgba(255, 0, 0, 0.4)",
+                      borderRadius: "8px",
+                      color: "#ff4444",
+                      fontSize: "13px",
+                      fontFamily: "'Segoe UI', -apple-system, sans-serif",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      transition: "all 0.2s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "rgba(255, 0, 0, 0.3)";
+                      e.currentTarget.style.borderColor = "rgba(255, 0, 0, 0.6)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "rgba(255, 0, 0, 0.2)";
+                      e.currentTarget.style.borderColor = "rgba(255, 0, 0, 0.4)";
+                    }}
+                  >
+                    Stop & Export (or press Enter)
+                  </button>
+                </>
+              )}
+
+              {!trainingData.isRecording && trainingData.samples.length > 0 && (
+                <>
+                  <button
+                    onClick={trainingData.exportData}
+                    style={{
+                      padding: "10px 16px",
+                      background: "rgba(255, 255, 255, 0.1)",
+                      border: "1px solid rgba(255, 255, 255, 0.2)",
+                      borderRadius: "8px",
+                      color: "#ffffff",
+                      fontSize: "13px",
+                      fontFamily: "'Segoe UI', -apple-system, sans-serif",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      transition: "all 0.2s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.15)";
+                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+                    }}
+                  >
+                    Export JSON
+                  </button>
+                  <button
+                    onClick={trainingData.clearSamples}
+                    style={{
+                      padding: "10px 16px",
+                      background: "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      borderRadius: "8px",
+                      color: "rgba(255, 255, 255, 0.6)",
+                      fontSize: "13px",
+                      fontFamily: "'Segoe UI', -apple-system, sans-serif",
+                      cursor: "pointer",
+                      fontWeight: 400,
+                      transition: "all 0.2s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                      e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.1)";
+                    }}
+                  >
+                    Clear Samples
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
