@@ -241,6 +241,13 @@ function drawFooter(
   const progressBarWidth = canvas.width - progressBarX - 32;
   const elapsedWidth = progressBarWidth * song.progress;
 
+  // Draw full progress bar track (unplayed portion) - thin and subtle
+  const trackHeight = 2; // Thinner track for unplayed portion
+  const trackY = progressBarY + (PROGRESS_BAR_HEIGHT - trackHeight) / 2; // Center vertically
+  ctx.fillStyle = "rgba(255, 255, 255, 0.3)"; // Semi-transparent white
+  drawRoundedRect(ctx, progressBarX, trackY, progressBarWidth, trackHeight, 1);
+
+  // Draw played portion on top - thicker and brighter
   if (elapsedWidth > 0) {
     ctx.fillStyle = "#ffffff";
     drawRoundedRect(ctx, progressBarX, progressBarY, elapsedWidth, PROGRESS_BAR_HEIGHT, 1.5);
