@@ -1,5 +1,2 @@
 quart
 spotipy
-numpy
-sounddevice
-

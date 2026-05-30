@@ -6,6 +6,11 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
+    // Dev only: forward API calls to the Python backend. In production the
+    // backend serves this build directly, so requests are same-origin.
+    proxy: {
+      "/api": "http://localhost:5000",
+    },
   },
   build: {
     outDir: 'build',

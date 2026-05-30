@@ -1,6 +1,7 @@
 export const TOTAL_BARS = 50;
-export const API_BASE_URL = "http://localhost:5000";
-export const WS_URL = "ws://localhost:5000/ws";
+// Same-origin: the backend serves the built frontend. In dev, Vite proxies
+// /api to the backend (see vite.config.ts).
+export const API_BASE_URL = "/api";
 
 // Canvas drawing constants
 export const ALBUM_RADIUS = 150;

@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
-import useWebSocket from "react-use-websocket";
-import { Song, Bands, WebSocketData } from "../types";
-import { WS_URL } from "../constants";
+import { Song } from "../types";
+import { API_BASE_URL } from "../constants";
 
+const POLL_INTERVAL_MS = 1000;
+
+// Track metadata only. Audio bands now come from useAudioCapture (browser-side
+// Web Audio), so this just polls the backend for the currently playing song.
 export function useSpotifyData() {
   const [song, setSong] = useState<Song>({
     title: "No Title",
@@ -11,34 +14,44 @@ export function useSpotifyData() {
     progress: 0,
     is_playing: false,
   });
-  const [bands, setBands] = useState<Bands>({});
   const [isPlaying, setIsPlaying] = useState(false);
-
-  const { lastJsonMessage } = useWebSocket(WS_URL, {
-    shouldReconnect: () => true,
-  });
+  // Whether Spotify metadata/controls are connected. False => audio-only mode,
+  // so the UI hides the track card and playback controls.
+  const [available, setAvailable] = useState(false);
 
   useEffect(() => {
-    if (lastJsonMessage) {
-      const data = lastJsonMessage as WebSocketData;
-      if (data.song) {
-        setSong((prev) => ({
-          title: data.song.title || "No Title",
-          artists: data.song.artists || "Unknown Artist",
-          album_cover: data.song.album_cover || "",
-          progress: data.song.progress,
-          is_playing: data.song.is_playing,
-          artist_icon: data.song.artist_icon,
-          genres: data.song.genres || [],
-        }));
-        setIsPlaying(data.song.is_playing);
-      }
-      if (data.bands) {
-        setBands(data.bands);
-      }
-    }
-  }, [lastJsonMessage]);
+    let cancelled = false;
 
-  return { song, bands, isPlaying };
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/song`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled || !data) return;
+        setAvailable(!!data.available);
+        setSong({
+          title: data.title || "No Title",
+          artists: data.artists || "Unknown Artist",
+          album_cover: data.album_cover || "",
+          progress: data.progress,
+          is_playing: data.is_playing,
+          artist_icon: data.artist_icon,
+          genres: data.genres || [],
+        });
+        setIsPlaying(!!data.is_playing);
+      } catch {
+        // Backend unreachable: drop to audio-only rather than show stale controls.
+        if (!cancelled) setAvailable(false);
+      }
+    };
+
+    poll();
+    const id = setInterval(poll, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  return { song, isPlaying, available };
 }
-

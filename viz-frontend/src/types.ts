@@ -12,11 +12,6 @@ export interface Bands {
   [key: string]: number;
 }
 
-export interface WebSocketData {
-  song: Song;
-  bands: Bands;
-}
-
 export interface Ripple {
   startTime: number;
 }

@@ -28,6 +28,7 @@ interface DrawVisualizerParams {
   lastRippleTrigger: number;
   pianoParticles: PianoParticle[];
   menuVisible: boolean;
+  showSongInfo: boolean;
 }
 
 export function drawVisualizer({
@@ -43,6 +44,7 @@ export function drawVisualizer({
   lastRippleTrigger,
   pianoParticles,
   menuVisible,
+  showSongInfo,
 }: DrawVisualizerParams): void {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -174,8 +176,8 @@ export function drawVisualizer({
     ctx.shadowBlur = 0;
   }
 
-  // Draw footer
-  if (menuVisible) {
+  // Draw footer (track card) only when Spotify metadata is connected.
+  if (menuVisible && showSongInfo) {
     drawFooter(ctx, canvas, song, albumImage);
   }
 }

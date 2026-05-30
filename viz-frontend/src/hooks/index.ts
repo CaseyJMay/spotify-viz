@@ -1,4 +1,5 @@
 export { useSpotifyData } from "./useSpotifyData";
+export { useAudioCapture } from "./useAudioCapture";
 export { useMenuVisibility } from "./useMenuVisibility";
 export { usePlaybackControls } from "./usePlaybackControls";
 export { useRippleDetection } from "./useRippleDetection";

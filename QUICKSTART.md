@@ -1,66 +1,50 @@
-# Quick Start Guide
+# Quick Start
 
-## Setup
+## 1. Install
 
-1. **Install system dependencies** (Linux only, one-time setup):
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get install -y portaudio19-dev
-   
-   # Fedora/RHEL
-   sudo dnf install -y portaudio-devel
-   
-   # Arch Linux
-   sudo pacman -S portaudio
-   ```
-
-2. **Create and activate virtual environment** (if not already done):
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-
-3. **Install Python dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Setup audio loopback** (if needed):
-   ```bash
-   ./setup-audio-loopback.sh
-   ```
-   Or simply run: `pw-loopback` (PipeWire) or `pactl load-module module-loopback` (PulseAudio)
-
-## Running the App
-
-### Option 1: Use the helper script (easiest)
 ```bash
-./run.sh
+./install.sh
 ```
 
-### Option 2: Manual activation
+Creates the Python venv, installs dependencies, builds the frontend, and writes
+a `.env`. Requires Python 3.9+ and Node.js 18+.
+
+## 2. Run
+
 ```bash
-source venv/bin/activate
-python3 spotify-viz.py
+./start.sh
 ```
 
-### Option 3: Frontend (in separate terminal)
-```bash
-cd viz-frontend
-npm install
-npm start
-```
+- On first run you're asked whether to connect Spotify (for track info +
+  controls). Say no to go straight to audio-only.
+- Open the Spotify Web Player (`https://open.spotify.com`) in a Chrome/Edge tab
+  and play something.
+- In the visualizer tab, click **Start audio** and pick the Web Player tab with
+  **"Share tab audio"** checked.
 
-## Deactivating Virtual Environment
+## Spotify track info & controls (optional)
 
-When you're done, deactivate the virtual environment:
-```bash
-deactivate
-```
+The track card and play/pause/next buttons need Spotify access. The app ships
+with a bundled client ID; you must be on its allow-list (Spotify dev mode caps
+at 5 users), and playback control needs Spotify Premium. To use your own app,
+set `SPOTIPY_CLIENT_ID` in `.env` - see [SPOTIFY_SETUP.md](SPOTIFY_SETUP.md).
+
+Without Spotify access the app runs in audio-only mode (visuals only).
 
 ## Notes
 
-- The virtual environment keeps all Python dependencies isolated to this project
-- Always activate the venv before running the app: `source venv/bin/activate`
-- The `run.sh` script automatically activates the venv for you
+- Use Chrome or Edge. Firefox and Safari cannot share tab audio.
+- If the visuals stay flat, you likely forgot to check "Share tab audio" in the
+  picker - click **Start audio** again and re-share.
+- Re-authorize Spotify by deleting `.cache` and re-running `./start.sh`.
+- Stop the server with `Ctrl+C`.
 
+## Development
+
+Run the frontend dev server with hot reload (backend must also be running):
+
+```bash
+cd viz-frontend && npm run dev
+```
+
+Vite proxies `/api` to the backend on port 5000 (see `vite.config.ts`).

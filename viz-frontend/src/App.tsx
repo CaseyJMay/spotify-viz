@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Config } from "./types";
 import {
   useSpotifyData,
+  useAudioCapture,
   useMenuVisibility,
   usePlaybackControls,
   useRippleDetection,
@@ -10,7 +11,7 @@ import {
   usePianoParticles,
   useTrainingData,
 } from "./hooks";
-import { PlaybackControls, ConfigMenu } from "./components";
+import { PlaybackControls, ConfigMenu, AudioCapturePrompt } from "./components";
 import { drawVisualizer } from "./canvas";
 import { DEFAULT_VISUALIZER } from "./visualizers";
 
@@ -24,7 +25,13 @@ const App: React.FC = () => {
   });
 
   // Custom hooks
-  const { song, bands, isPlaying } = useSpotifyData();
+  const { song, isPlaying, available: metadataAvailable } = useSpotifyData();
+  const {
+    bands,
+    status: captureStatus,
+    error: captureError,
+    start: startCapture,
+  } = useAudioCapture();
   const { menuVisible, menuExpanded, setMenuExpanded } = useMenuVisibility();
   const { handlePlayPause, handleNext, handleBack } = usePlaybackControls();
   const { ripplesRef, lastRippleTriggerRef } = useRippleDetection(bands, config);
@@ -127,6 +134,7 @@ const App: React.FC = () => {
         lastRippleTrigger: lastRippleTriggerRef.current,
         pianoParticles: pianoParticlesRef.current,
         menuVisible,
+        showSongInfo: metadataAvailable,
       });
 
       if (transitionProgressRef.current < 1) {
@@ -153,10 +161,15 @@ const App: React.FC = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelAnimationFrame(animationFrameId.current);
     };
-  }, [bands, gradientColors, song, config, menuVisible, ripplesRef, lastRippleTriggerRef, gradientColorsRef, transitionProgressRef, albumImageRef, pianoParticlesRef]);
+  }, [bands, gradientColors, song, config, menuVisible, metadataAvailable, ripplesRef, lastRippleTriggerRef, gradientColorsRef, transitionProgressRef, albumImageRef, pianoParticlesRef]);
 
   return (
     <>
+      <AudioCapturePrompt
+        status={captureStatus}
+        error={captureError}
+        onStart={startCapture}
+      />
       <ConfigMenu
         visible={menuVisible}
         expanded={menuExpanded}
@@ -170,13 +183,15 @@ const App: React.FC = () => {
           setConfig((prev) => ({ ...prev, ...updates }));
         }}
       />
-      <PlaybackControls
-        isPlaying={isPlaying}
-        onPlayPause={() => handlePlayPause(isPlaying)}
-        onNext={handleNext}
-        onBack={handleBack}
-        visible={menuVisible}
-      />
+      {metadataAvailable && (
+        <PlaybackControls
+          isPlaying={isPlaying}
+          onPlayPause={() => handlePlayPause(isPlaying)}
+          onNext={handleNext}
+          onBack={handleBack}
+          visible={menuVisible}
+        />
+      )}
       <canvas ref={canvasRef} style={{ display: "block" }} />
     </>
   );

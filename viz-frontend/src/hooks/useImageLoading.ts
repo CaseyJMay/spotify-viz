@@ -2,9 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Song } from "../types";
 import { extractPrimaryColors, ensureReadableColors } from "../utils";
 
+// Shown before/without album art (e.g. audio-only mode) so the canvas isn't
+// just black. Album colors override this once a track loads.
+const PLACEHOLDER_GRADIENT = ["#0f2027", "#203a43", "#2c5364"];
+
 export function useImageLoading(song: Song) {
-  const [gradientColors, setGradientColors] = useState<string[]>(["#000", "#000"]);
-  const gradientColorsRef = useRef<string[]>(["#000", "#000"]);
+  const [gradientColors, setGradientColors] = useState<string[]>(PLACEHOLDER_GRADIENT);
+  const gradientColorsRef = useRef<string[]>(PLACEHOLDER_GRADIENT);
   const transitionProgressRef = useRef(0);
   const albumImageRef = useRef<HTMLImageElement | null>(null);
   const artistIconRef = useRef<HTMLImageElement | null>(null);

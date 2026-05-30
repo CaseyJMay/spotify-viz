@@ -38,12 +38,15 @@ export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
           padding: "8px 16px",
           display: "flex",
           alignItems: "center",
+          justifyContent: "center",
           gap: "20px",
           boxShadow: "0 4px 16px rgba(0, 0, 0, 0.3)",
         }}
       >
         <ControlButton onClick={onBack} icon="⏮" size={36} />
-        <PlayPauseButton onClick={onPlayPause} isPlaying={isPlaying} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <PlayPauseButton onClick={onPlayPause} isPlaying={isPlaying} />
+        </div>
         <ControlButton onClick={onNext} icon="⏭" size={36} />
       </div>
     </div>
@@ -129,7 +132,8 @@ const PlayPauseButton: React.FC<PlayPauseButtonProps> = ({ onClick, isPlaying })
           alignItems: "center",
           justifyContent: "center",
           lineHeight: 1,
-          transform: isPlaying ? "none" : "translateX(1px)",
+          width: "100%",
+          height: "100%",
         }}
       >
         {isPlaying ? "⏸" : "▶"}

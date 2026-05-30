@@ -15,6 +15,17 @@ __pycache__/
 .env
 .env.local
 
+# Spotify token cache (PKCE)
+.cache
+
+# Node / frontend build
+node_modules/
+viz-frontend/build/
+viz-frontend/node_modules/
+
+# Training data exports
+bass-training-data-*.json
+
 # IDE
 .vscode/
 .idea/
