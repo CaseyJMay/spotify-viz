@@ -3,6 +3,12 @@ import { Song } from "../types";
 import { API_BASE_URL } from "../constants";
 
 const POLL_INTERVAL_MS = 1000;
+// Static production deployments use screen-derived metadata and never contact
+// /api/song. Local development keeps the legacy backend available; a hosted
+// build can explicitly opt back in with VITE_SPOTIFY_API_ENABLED=true.
+const API_POLLING_ENABLED =
+  import.meta.env.VITE_SPOTIFY_API_ENABLED === "true" ||
+  (import.meta.env.DEV && import.meta.env.VITE_SPOTIFY_API_ENABLED !== "false");
 
 // Track metadata only. Audio bands now come from useAudioCapture (browser-side
 // Web Audio), so this just polls the backend for the currently playing song.
@@ -20,6 +26,8 @@ export function useSpotifyData() {
   const [available, setAvailable] = useState(false);
 
   useEffect(() => {
+    if (!API_POLLING_ENABLED) return;
+
     let cancelled = false;
 
     const poll = async () => {

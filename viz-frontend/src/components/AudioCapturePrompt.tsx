@@ -40,7 +40,7 @@ export const AudioCapturePrompt: React.FC<AudioCapturePromptProps> = ({
         }}
       >
         <h1 style={{ fontSize: "26px", marginBottom: "12px" }}>
-          Spotify Visualizer
+          VizJam
         </h1>
 
         {unsupported ? (
