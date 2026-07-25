@@ -31,6 +31,7 @@ export function useAudioCapture() {
     isSupported() ? "idle" : "unsupported"
   );
   const [error, setError] = useState<string | null>(null);
+  const [captureStream, setCaptureStream] = useState<MediaStream | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -43,6 +44,7 @@ export function useAudioCapture() {
     cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    setCaptureStream(null);
     if (audioCtxRef.current) {
       audioCtxRef.current.close().catch(() => {});
       audioCtxRef.current = null;
@@ -76,8 +78,6 @@ export function useAudioCapture() {
         setStatus("error");
         return;
       }
-      stream.getVideoTracks().forEach((t) => t.stop());
-
       const audioCtx = new AudioContext();
       const source = audioCtx.createMediaStreamSource(
         new MediaStream(audioTracks)
@@ -88,6 +88,7 @@ export function useAudioCapture() {
       source.connect(analyser);
 
       streamRef.current = stream;
+      setCaptureStream(stream);
       audioCtxRef.current = audioCtx;
       analyserRef.current = analyser;
       dataRef.current = new Float32Array(
@@ -127,5 +128,5 @@ export function useAudioCapture() {
 
   useEffect(() => () => stop(), [stop]);
 
-  return { bands, status, error, start, stop };
+  return { bands, status, error, captureStream, start, stop };
 }

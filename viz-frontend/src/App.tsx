@@ -10,6 +10,7 @@ import {
   useGenreSettings,
   usePianoParticles,
   useTrainingData,
+  useScreenMetadata,
 } from "./hooks";
 import { PlaybackControls, ConfigMenu, AudioCapturePrompt } from "./components";
 import { drawVisualizer } from "./canvas";
@@ -25,13 +26,18 @@ const App: React.FC = () => {
   });
 
   // Custom hooks
-  const { song, isPlaying, available: metadataAvailable } = useSpotifyData();
+  const spotifyData = useSpotifyData();
   const {
     bands,
     status: captureStatus,
     error: captureError,
+    captureStream,
     start: startCapture,
   } = useAudioCapture();
+  const screenMetadata = useScreenMetadata(captureStream);
+  const song = screenMetadata.available ? screenMetadata.song : spotifyData.song;
+  const isPlaying = spotifyData.isPlaying;
+  const metadataAvailable = screenMetadata.available || spotifyData.available;
   const { menuVisible, menuExpanded, setMenuExpanded } = useMenuVisibility();
   const { handlePlayPause, handleNext, handleBack } = usePlaybackControls();
   const { ripplesRef, lastRippleTriggerRef } = useRippleDetection(bands, config);
@@ -183,7 +189,7 @@ const App: React.FC = () => {
           setConfig((prev) => ({ ...prev, ...updates }));
         }}
       />
-      {metadataAvailable && (
+      {spotifyData.available && !screenMetadata.available && (
         <PlaybackControls
           isPlaying={isPlaying}
           onPlayPause={() => handlePlayPause(isPlaying)}

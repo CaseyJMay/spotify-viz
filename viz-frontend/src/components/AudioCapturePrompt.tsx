@@ -54,6 +54,19 @@ export const AudioCapturePrompt: React.FC<AudioCapturePromptProps> = ({
               Play music in the Spotify Web Player tab, then click below and pick
               that tab with <strong>&quot;Share tab audio&quot;</strong> checked.
             </p>
+            <p
+              style={{
+                opacity: 0.55,
+                lineHeight: 1.45,
+                margin: "-8px 0 20px",
+                fontSize: "13px",
+              }}
+            >
+              For reliable cover art, open Spotify&apos;s fullscreen/Now Playing view
+              so the large artwork is centered, and keep Spotify at 100% zoom. After
+              sharing, return here and leave Spotify unfocused while its bottom-left
+              song label is read. Everything is read locally.
+            </p>
             <button
               onClick={onStart}
               style={{

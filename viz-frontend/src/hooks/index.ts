@@ -7,4 +7,4 @@ export { useImageLoading } from "./useImageLoading";
 export { useGenreSettings } from "./useGenreSettings";
 export { usePianoParticles } from "./usePianoParticles";
 export { useTrainingData } from "./useTrainingData";
-
+export { useScreenMetadata } from "./useScreenMetadata";
