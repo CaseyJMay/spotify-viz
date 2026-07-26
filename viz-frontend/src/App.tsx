@@ -9,7 +9,6 @@ import {
   useImageLoading,
   useGenreSettings,
   usePianoParticles,
-  useTrainingData,
   useScreenMetadata,
 } from "./hooks";
 import { PlaybackControls, ConfigMenu, AudioCapturePrompt } from "./components";
@@ -44,6 +43,7 @@ const App: React.FC = () => {
   const {
     gradientColors,
     gradientColorsRef,
+    previousGradientColorsRef,
     transitionProgressRef,
     albumImageRef,
   } = useImageLoading(song);
@@ -64,45 +64,6 @@ const App: React.FC = () => {
     canvasSize.width,
     canvasSize.height
   );
-
-  // Training data collection
-  const trainingData = useTrainingData();
-
-  // Keyboard shortcuts for training data collection
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      // Only trigger if not typing in an input field
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        e.target instanceof HTMLSelectElement
-      ) {
-        return;
-      }
-
-      // Spacebar to record bass hit (only when recording)
-      if (e.key === " ") {
-        e.preventDefault(); // Prevent page scroll
-        if (trainingData.isRecording) {
-          trainingData.recordSample(bands, song, "bass_hit");
-        }
-      }
-
-      // Enter to stop recording and auto-export
-      if (e.key === "Enter") {
-        if (trainingData.isRecording && trainingData.samples.length > 0) {
-          trainingData.stopRecording();
-          // Small delay to ensure state updates, then export
-          setTimeout(() => {
-            trainingData.exportData();
-          }, 100);
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyPress);
-    return () => window.removeEventListener("keydown", handleKeyPress);
-  }, [bands, song, trainingData]);
 
   // Canvas drawing effect
   useEffect(() => {
@@ -134,6 +95,7 @@ const App: React.FC = () => {
         song,
         config,
         gradientColors: gradientColorsRef.current,
+        previousGradientColors: previousGradientColorsRef.current,
         transitionProgress: transitionProgressRef.current,
         albumImage: albumImageRef.current,
         ripples: ripplesRef.current,
@@ -155,7 +117,6 @@ const App: React.FC = () => {
       if (document.hidden) {
         cancelAnimationFrame(animationFrameId.current);
       } else {
-        transitionProgressRef.current = 0;
         animationFrameId.current = requestAnimationFrame(animFrame);
       }
     };
@@ -167,7 +128,7 @@ const App: React.FC = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelAnimationFrame(animationFrameId.current);
     };
-  }, [bands, gradientColors, song, config, menuVisible, metadataAvailable, ripplesRef, lastRippleTriggerRef, gradientColorsRef, transitionProgressRef, albumImageRef, pianoParticlesRef]);
+  }, [bands, gradientColors, song, config, menuVisible, metadataAvailable, ripplesRef, lastRippleTriggerRef, gradientColorsRef, previousGradientColorsRef, transitionProgressRef, albumImageRef, pianoParticlesRef]);
 
   return (
     <>
@@ -180,9 +141,6 @@ const App: React.FC = () => {
         visible={menuVisible}
         expanded={menuExpanded}
         config={config}
-        trainingData={trainingData}
-        song={song}
-        bands={bands}
         onToggleExpanded={() => setMenuExpanded((prev) => !prev)}
         onConfigChange={(updates) => {
           recordOverride(updates); // Record user override

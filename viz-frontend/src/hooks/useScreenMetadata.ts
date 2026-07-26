@@ -6,6 +6,8 @@ export type ScreenMetadataStatus = "idle" | "reading" | "ready" | "error";
 
 const SAMPLE_INTERVAL_MS = 750;
 const OCR_FOCUS_SETTLE_MS = 2500;
+const OCR_RETRY_MS = 1400;
+const OCR_MAX_ATTEMPTS = 8;
 const ANALYSIS_SIZE = 32;
 const ART_CHANGE_THRESHOLD = 8;
 const MIN_ART_VARIANCE = 14;
@@ -13,8 +15,8 @@ const STABLE_FRAME_THRESHOLD = 3.5;
 const REQUIRED_STABLE_SAMPLES = 2;
 
 const initialSong: Song = {
-  title: "Reading shared Spotify tab…",
-  artists: "Keep Spotify at 100% zoom",
+  title: "Analyzing track…",
+  artists: "Identifying title and artist",
   album_cover: "",
   progress: -1,
   is_playing: false,
@@ -40,16 +42,16 @@ function getPlayerLayout(width: number, height: number): PlayerLayout {
   // Once the shared Spotify tab loses focus, Now Playing drops the compact
   // player thumbnail and leaves a persistent two-line label at bottom-left.
   // Target that stable layout instead of the short-lived focused controls.
-  const textX = Math.max(16, Math.round(width * 0.017));
-  const textHeight = Math.max(64, Math.round(height * 0.075));
+  const textX = Math.max(12, Math.round(width * 0.012));
+  const textHeight = Math.max(72, Math.round(height * 0.1));
 
   return {
     artX,
     artY,
     artSize,
     textX,
-    textY: Math.max(0, height - Math.round(height * 0.085)),
-    textWidth: Math.max(260, Math.min(640, Math.round(width * 0.36))),
+    textY: Math.max(0, height - Math.round(height * 0.115)),
+    textWidth: Math.max(300, Math.round(width * 0.42)),
     textHeight,
   };
 }
@@ -118,7 +120,9 @@ function prepareTextCrop(
   video: HTMLVideoElement,
   layout: PlayerLayout
 ): HTMLCanvasElement {
-  const scale = 4;
+  // Scale from the captured frame, not the viewer's monitor. Low-resolution
+  // shares need more enlargement, while 4K should not make a giant bitmap.
+  const scale = Math.max(2, Math.min(5, Math.round(360 / layout.textHeight)));
   const canvas = document.createElement("canvas");
   canvas.width = layout.textWidth * scale;
   canvas.height = layout.textHeight * scale;
@@ -137,15 +141,35 @@ function prepareTextCrop(
     canvas.height
   );
 
-  // Spotify's label is light text on a dark surface. Converting it to crisp
-  // black-on-white pixels makes the tiny UI font much easier for OCR.
+  // Derive contrast from this frame because Spotify's album-based background
+  // can range from nearly black to very bright.
   const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  let luminanceTotal = 0;
+  let luminanceSquaredTotal = 0;
+  const pixelCount = image.data.length / 4;
   for (let index = 0; index < image.data.length; index += 4) {
     const luminance =
       image.data[index] * 0.2126 +
       image.data[index + 1] * 0.7152 +
       image.data[index + 2] * 0.0722;
-    const value = luminance >= 105 ? 0 : 255;
+    luminanceTotal += luminance;
+    luminanceSquaredTotal += luminance * luminance;
+  }
+  const averageLuminance = luminanceTotal / pixelCount;
+  const luminanceDeviation = Math.sqrt(
+    Math.max(0, luminanceSquaredTotal / pixelCount - averageLuminance ** 2)
+  );
+  const threshold = Math.min(
+    250,
+    averageLuminance + Math.max(12, luminanceDeviation * 0.65)
+  );
+
+  for (let index = 0; index < image.data.length; index += 4) {
+    const luminance =
+      image.data[index] * 0.2126 +
+      image.data[index + 1] * 0.7152 +
+      image.data[index + 2] * 0.0722;
+    const value = luminance > threshold ? 0 : 255;
     image.data[index] = value;
     image.data[index + 1] = value;
     image.data[index + 2] = value;
@@ -184,6 +208,8 @@ export function useScreenMetadata(captureStream: MediaStream | null): {
     let committedArt: Uint8ClampedArray | null = null;
     let ocrCandidateKey = "";
     let ocrCandidateSamples = 0;
+    let ocrAttempts = 0;
+    let metadataConfirmed = false;
     let workerPromise: Promise<TesseractWorker> | null = null;
     const video = document.createElement("video");
     const analysisCanvas = document.createElement("canvas");
@@ -224,6 +250,8 @@ export function useScreenMetadata(captureStream: MediaStream | null): {
         return;
       }
       ocrBusy = true;
+      ocrAttempts += 1;
+      let retryAfterRun = true;
       try {
         const layout = getPlayerLayout(video.videoWidth, video.videoHeight);
         const textCanvas = prepareTextCrop(video, layout);
@@ -257,15 +285,38 @@ export function useScreenMetadata(captureStream: MediaStream | null): {
             artists,
           }));
           setStatus("ready");
+          metadataConfirmed = true;
         }
       } catch (reason) {
         if (!cancelled) {
+          retryAfterRun = false;
           setError(reason instanceof Error ? reason.message : "Screen text could not be read.");
           // Album art remains useful even when OCR assets cannot load.
+          if (hasAlbumArt) {
+            setSong((current) => ({
+              ...current,
+              title: "Now playing",
+              artists: "Spotify",
+            }));
+          }
           setStatus(hasAlbumArt ? "ready" : "error");
         }
       } finally {
         ocrBusy = false;
+        // Focus changes and UI animation can spoil an individual frame. Keep
+        // trying until the same two-line label has been confirmed twice.
+        if (!cancelled && retryAfterRun && !metadataConfirmed) {
+          if (ocrAttempts < OCR_MAX_ATTEMPTS) {
+            queueOcr(OCR_RETRY_MS);
+          } else {
+            setSong((current) => ({
+              ...current,
+              title: "Now playing",
+              artists: "Spotify",
+            }));
+            setStatus("ready");
+          }
+        }
       }
     };
 
@@ -332,6 +383,8 @@ export function useScreenMetadata(captureStream: MediaStream | null): {
       committedArt = new Uint8ClampedArray(pixels);
       ocrCandidateKey = "";
       ocrCandidateSamples = 0;
+      ocrAttempts = 0;
+      metadataConfirmed = false;
 
       artContext.clearRect(0, 0, artCanvas.width, artCanvas.height);
       artContext.drawImage(
@@ -348,8 +401,8 @@ export function useScreenMetadata(captureStream: MediaStream | null): {
       const albumCover = artCanvas.toDataURL("image/jpeg", 0.95);
       hasAlbumArt = true;
       setSong({
-        title: "Now playing",
-        artists: "Spotify",
+        title: "Analyzing track…",
+        artists: "Identifying title and artist",
         album_cover: albumCover,
         progress: -1,
         is_playing: true,

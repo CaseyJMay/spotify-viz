@@ -15,6 +15,7 @@ export const AudioCapturePrompt: React.FC<AudioCapturePromptProps> = ({
   if (status === "capturing") return null;
 
   const unsupported = status === "unsupported";
+  const requesting = status === "requesting";
 
   return (
     <div
@@ -69,19 +70,35 @@ export const AudioCapturePrompt: React.FC<AudioCapturePromptProps> = ({
             </p>
             <button
               onClick={onStart}
+              disabled={requesting}
+              aria-busy={requesting}
               style={{
-                background: "#1db954",
+                background: requesting ? "#168a40" : "#1db954",
                 color: "#ffffff",
                 border: "none",
                 borderRadius: "24px",
                 padding: "12px 28px",
                 fontSize: "16px",
                 fontWeight: 600,
-                cursor: "pointer",
+                cursor: requesting ? "wait" : "pointer",
+                opacity: requesting ? 0.8 : 1,
+                minWidth: "190px",
               }}
             >
-              {status === "error" ? "Try again" : "Start audio"}
+              {requesting
+                ? "Opening share picker…"
+                : status === "error"
+                  ? "Try again"
+                  : "Start audio"}
             </button>
+            {requesting && (
+              <p
+                role="status"
+                style={{ opacity: 0.65, marginTop: "12px", fontSize: "13px" }}
+              >
+                Choose the Spotify tab in Chrome&apos;s window.
+              </p>
+            )}
             {error && (
               <p style={{ color: "#ff6b6b", marginTop: "16px", fontSize: "14px" }}>
                 {error}

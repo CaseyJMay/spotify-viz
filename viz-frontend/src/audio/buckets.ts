@@ -23,7 +23,9 @@ export const BUCKET_COUNT = BUCKET_RANGES.length;
 // visualizers expect in roughly the 0-120 range (bass hits ~100). AnalyserNode
 // gives normalized amplitude (0..1), so we scale it back up. Raise for punchier
 // visuals, lower if Line Wave/bars clip. Tune with audio playing.
-const LINEAR_GAIN = 1000;
+// Tab audio arrives a little quieter than the former system-loopback source.
+// A 20% lift restores some visual range while retaining comfortable headroom.
+const LINEAR_GAIN = 1200;
 
 // Below this dB the bin is treated as silence (avoids 10^(huge negative)).
 const SILENCE_FLOOR_DB = -90;

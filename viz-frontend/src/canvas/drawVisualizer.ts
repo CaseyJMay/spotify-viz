@@ -22,6 +22,7 @@ interface DrawVisualizerParams {
   song: Song;
   config: Config;
   gradientColors: string[];
+  previousGradientColors: string[];
   transitionProgress: number;
   albumImage: HTMLImageElement | null;
   ripples: Ripple[];
@@ -38,6 +39,7 @@ export function drawVisualizer({
   song,
   config,
   gradientColors,
+  previousGradientColors,
   transitionProgress,
   albumImage,
   ripples,
@@ -51,20 +53,30 @@ export function drawVisualizer({
   const centerX = canvas.width / 2;
   const centerY = canvas.height / 2;
 
-  // Draw background gradient
-  const bgGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  if (gradientColors.length < 2) {
-    bgGradient.addColorStop(0, "#000");
-    bgGradient.addColorStop(1, "#000");
-  } else {
-    gradientColors.forEach((color, index) => {
-      bgGradient.addColorStop(index / (gradientColors.length - 1), color);
+  // Always paint an opaque background. During a song change, keep the previous
+  // album gradient underneath and crossfade the new one over it.
+  const fillBackground = (colors: string[], opacity: number) => {
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    const usableColors = colors.length >= 2 ? colors : ["#000", "#000"];
+    usableColors.forEach((color, index) => {
+      gradient.addColorStop(index / (usableColors.length - 1), color);
     });
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  };
+
+  const backgroundProgress = Math.max(0, Math.min(transitionProgress, 1));
+  if (backgroundProgress >= 1) {
+    fillBackground(gradientColors, 1);
+  } else {
+    fillBackground(previousGradientColors, 1);
+    if (backgroundProgress > 0) {
+      fillBackground(gradientColors, backgroundProgress);
+    }
   }
-  ctx.globalAlpha = Math.min(transitionProgress, 1);
-  ctx.fillStyle = bgGradient;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.globalAlpha = 1;
 
   // Draw selected visualizer
   const visualizerId = config.visualizer || DEFAULT_VISUALIZER;

@@ -9,6 +9,7 @@ const PLACEHOLDER_GRADIENT = ["#0f2027", "#203a43", "#2c5364"];
 export function useImageLoading(song: Song) {
   const [gradientColors, setGradientColors] = useState<string[]>(PLACEHOLDER_GRADIENT);
   const gradientColorsRef = useRef<string[]>(PLACEHOLDER_GRADIENT);
+  const previousGradientColorsRef = useRef<string[]>(PLACEHOLDER_GRADIENT);
   const transitionProgressRef = useRef(0);
   const albumImageRef = useRef<HTMLImageElement | null>(null);
   const artistIconRef = useRef<HTMLImageElement | null>(null);
@@ -38,6 +39,7 @@ export function useImageLoading(song: Song) {
         // Darken colors that are too bright for readability
         const readableColors = ensureReadableColors(primaryColors, 180, 0.4);
         if (JSON.stringify(readableColors) !== JSON.stringify(gradientColorsRef.current)) {
+          previousGradientColorsRef.current = gradientColorsRef.current;
           gradientColorsRef.current = readableColors;
           setGradientColors(readableColors);
           transitionProgressRef.current = 0;
@@ -63,6 +65,7 @@ export function useImageLoading(song: Song) {
   return {
     gradientColors,
     gradientColorsRef,
+    previousGradientColorsRef,
     transitionProgressRef,
     albumImageRef,
     artistIconRef,

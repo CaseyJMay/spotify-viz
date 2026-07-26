@@ -3,12 +3,10 @@ import { Song } from "../types";
 import { API_BASE_URL } from "../constants";
 
 const POLL_INTERVAL_MS = 1000;
-// Static production deployments use screen-derived metadata and never contact
-// /api/song. Local development keeps the legacy backend available; a hosted
-// build can explicitly opt back in with VITE_SPOTIFY_API_ENABLED=true.
+// Screen capture is the default everywhere, including local development. The
+// legacy Spotify backend is available only as an explicit opt-in.
 const API_POLLING_ENABLED =
-  import.meta.env.VITE_SPOTIFY_API_ENABLED === "true" ||
-  (import.meta.env.DEV && import.meta.env.VITE_SPOTIFY_API_ENABLED !== "false");
+  import.meta.env.VITE_SPOTIFY_API_ENABLED === "true";
 
 // Track metadata only. Audio bands now come from useAudioCapture (browser-side
 // Web Audio), so this just polls the backend for the currently playing song.

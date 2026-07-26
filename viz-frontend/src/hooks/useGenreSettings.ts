@@ -51,19 +51,10 @@ export function useGenreSettings({
     lastSongIdRef.current = songId;
     isApplyingGenreSettingsRef.current = true;
 
-    // Debug logging
-    console.log("[Genre Settings] Song changed:", {
-      title: song.title,
-      artists: song.artists,
-      genres: song.genres || [],
-    });
-
     // Get genre-based settings
     const genreSettings = song.genres && song.genres.length > 0
       ? getGenreSettings(song.genres)
       : null;
-
-    console.log("[Genre Settings] Genre settings result:", genreSettings);
 
     const currentConfig = configRef.current;
 
@@ -74,8 +65,6 @@ export function useGenreSettings({
         bassThump: userOverridesRef.current.bassThump ?? genreSettings.bassThump,
         pianoParticles: userOverridesRef.current.pianoParticles ?? genreSettings.pianoParticles,
       };
-
-      console.log("[Genre Settings] Applying config:", newConfig, "Current:", currentConfig);
 
       // Only update if different from current config
       if (
@@ -92,8 +81,6 @@ export function useGenreSettings({
         bassThump: userOverridesRef.current.bassThump ?? DEFAULT_SETTINGS.bassThump,
         pianoParticles: userOverridesRef.current.pianoParticles ?? DEFAULT_SETTINGS.pianoParticles,
       };
-
-      console.log("[Genre Settings] No match, applying defaults:", newConfig);
 
       if (
         newConfig.ripples !== currentConfig.ripples ||

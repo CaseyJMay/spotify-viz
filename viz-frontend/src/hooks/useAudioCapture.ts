@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Bands } from "../types";
 import { computeBands } from "../audio/buckets";
 
-export type CaptureStatus = "idle" | "capturing" | "error" | "unsupported";
+export type CaptureStatus =
+  | "idle"
+  | "requesting"
+  | "capturing"
+  | "error"
+  | "unsupported";
 
 const FFT_SIZE = 2048;
 // Lower smoothing keeps the snappy response of the original raw-FFT pipeline.
@@ -39,6 +44,9 @@ export function useAudioCapture() {
   const dataRef = useRef<Float32Array<ArrayBuffer> | null>(null);
   const rafRef = useRef<number>(0);
   const lastUpdateRef = useRef<number>(0);
+  // State updates are not synchronous, so guard the native picker with a ref
+  // as well. This prevents rapid clicks from opening several share dialogs.
+  const startPendingRef = useRef(false);
 
   const stop = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
@@ -56,10 +64,13 @@ export function useAudioCapture() {
   }, []);
 
   const start = useCallback(async () => {
+    if (startPendingRef.current) return;
     if (!isSupported()) {
       setStatus("unsupported");
       return;
     }
+    startPendingRef.current = true;
+    setStatus("requesting");
     setError(null);
     try {
       // video:true is required for Chrome to surface the audio-sharing option;
@@ -123,6 +134,8 @@ export function useAudioCapture() {
       }
       setError(e instanceof Error ? e.message : "Failed to start audio capture.");
       setStatus("error");
+    } finally {
+      startPendingRef.current = false;
     }
   }, [stop]);
 

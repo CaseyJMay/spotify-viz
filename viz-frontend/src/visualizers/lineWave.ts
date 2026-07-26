@@ -1,6 +1,7 @@
 import { Visualizer, VisualizerParams } from "./types";
 import {
   ALBUM_RADIUS,
+  MAX_BAR_LENGTH,
   BASS_THUMP_DURATION,
   BASS_THUMP_SCALE_MIN,
 } from "../constants";
@@ -34,7 +35,10 @@ export const lineWaveVisualizer: Visualizer = {
       // Map frequency bands to waveform
       const bandIndex = Math.floor((i / numPoints) * 25); // 25 frequency bands
       const bucketKey = `bucket${Math.min(bandIndex + 1, 25)}`;
-      const amplitude = bands[bucketKey] || 0;
+      // Keep boosted input inside the same range as the radial visualizers.
+      // Without this clamp, bass-heavy tracks can draw a near-vertical line
+      // where the waveform exits the edge of a narrow canvas.
+      const amplitude = Math.min(bands[bucketKey] || 0, MAX_BAR_LENGTH);
       const y = centerYPos + (amplitude / 100) * waveHeight * Math.sin((i / numPoints) * Math.PI * 4);
       if (i === 0) {
         ctx.moveTo(x, y);
